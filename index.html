@@ -102,6 +102,12 @@ footer{color:var(--muted);text-align:center;font-size:13px;padding:10px 16px 30p
 .builder h3{margin:0 0 6px;font-size:18px}
 .brow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0;border-bottom:1px dashed var(--line)}
 .brow b{min-width:62px}
+.brow.missing{background:var(--bad-soft);border-radius:8px;padding:8px}
+.brow .tag{color:var(--bad);font-weight:700;font-size:14px}
+.brow .subs{display:flex;flex-wrap:wrap;gap:6px}
+.brow .subs label{background:#fff;border:1px solid var(--line);border-radius:8px;padding:2px 6px}
+.brow .subs input{width:54px;border:0;padding:2px}
+.brow textarea{min-height:70px;flex-basis:100%;font-size:15px}
 .brow label{display:flex;align-items:center;gap:4px;color:var(--muted);font-size:15px}
 .brow select,.brow input{border:1px solid var(--line);border-radius:8px;padding:4px 6px;background:#fff;width:64px}
 .brow .bsum{color:var(--muted);font-size:14px}
@@ -139,14 +145,6 @@ footer{color:var(--muted);text-align:center;font-size:13px;padding:10px 16px 30p
       <div class="row" style="margin-top:8px"><button class="btn primary" id="parseBtn" type="button">ניתוח הטקסט</button></div>
     </div>
   </div>
-  <div id="builder" class="builder hidden">
-    <h3>בניית מבחן חדש</h3>
-    <p class="legend" style="margin-top:0">קובעים כמה שאלות, כמה סעיפים בכל שאלה וכמה נקודות. מקבלים קובץ Word מוכן – עם כל הכותרות, הסעיפים, הניקוד וטבלת הניקוד – ורק מדביקים את השאלות עצמן (טקסט או תמונה). אותו מבנה הוא גם המיפוי.</p>
-    <div id="bRows"></div>
-    <div class="row" style="margin-top:10px">
-      <button class="btn" id="bAdd" type="button">＋ שאלה</button>
-      <span id="bTotal" class="chip"></span>
-    </div>
     <div class="row" style="margin-top:12px">
       <button class="btn primary" id="bWord" type="button">⬇ הורדת שלד המבחן ב-Word</button>
       <button class="btn" id="bMap" type="button">רק מיפוי (בלי Word)</button>
@@ -154,6 +152,20 @@ footer{color:var(--muted);text-align:center;font-size:13px;padding:10px 16px 30p
   </div>
   <p class="legend" style="margin-top:10px">טיפ: מבחן שנבנה ב<b>שלד ה-Word</b> של האתר (או ב<a href="template.docx" download="תבנית מבחן למיפוי.docx">תבנית הכללית</a>) ממופה בדיוק לפי טבלת הניקוד שבסופו. כל מבחן אחר מזוהה אוטומטית – כדאי לעבור על הכותרות בטבלה.</p>
   <div class="msg" id="testMsg"></div>
+  <div id="builder" class="builder hidden">
+    <h3 id="eTitle">השאלות והניקוד</h3>
+    <p class="legend" style="margin-top:0" id="eHelp"></p>
+    <div id="bRows"></div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="bAdd" type="button">＋ שאלה</button>
+      <span id="bTotal" class="chip"></span>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn primary" id="bMap" type="button">✓ עדכון המיפוי</button>
+      <button class="btn" id="bWord" type="button">⬇ שלד המבחן ב-Word</button>
+      <button class="btn" id="bClose" type="button">סגירה</button>
+    </div>
+  </div>
 </section>
 
 <!-- STEP 2 -->
@@ -193,6 +205,7 @@ footer{color:var(--muted);text-align:center;font-size:13px;padding:10px 16px 30p
     <button class="btn" id="addRowBtn" type="button">＋ הוספת תלמיד</button>
     <button class="btn" id="add5Btn" type="button">＋5 שורות</button>
     <button class="btn" id="addColBtn" type="button">＋ הוספת סעיף/שאלה</button>
+    <button class="btn" id="openEditorBtn" type="button">✏️ עריכת השאלות והניקוד</button>
     <button class="btn danger" id="trimBtn" type="button">מחיקת שורות ריקות</button>
   </div>
   <div class="chips" id="chips"></div>
@@ -867,13 +880,14 @@ function fixSuggestions(){
     if (diff){ const big = live.reduce((a, b) => (+b.max > +a.max ? b : a)); big.max = Math.round((+big.max + diff) * 2) / 2; }
     nulls.forEach(i => { if (i.max == null) i.max = 0; });
   });
-  h += `<div class="legend" style="margin-top:6px">אפשר גם לתקן ידנית בשורת "ניקוד מרבי" בטבלת המיפוי.</div></div>`;
+  h += `<div class="legend" style="margin-top:6px">או למטה, ב„השאלות והניקוד”: לתת ניקוד לכל שאלה וסעיף בעצמכם ולראות שהסכום מגיע ל-100.</div></div>`;
   return h;
 }
 $("#testMsg").addEventListener("click", e => {
   const b = e.target.closest("[data-fix]"); if (!b) return;
   fixes[+b.dataset.fix]();
   render(); save();
+  if (!$("#builder").classList.contains("hidden") && eMode === "fix"){ eQs = editorFromItems(); renderEditor(); }
   const t = sumMax();
   $("#fixBox").innerHTML = `<div style="margin-top:10px;padding:10px;border-radius:10px;background:var(--ok-soft);color:var(--ok)">✓ ההצעה הוחלה – סך הניקוד עכשיו <b>${fmt(t)}</b>. כדאי לעבור על שורת "ניקוד מרבי" בטבלת המיפוי.</div>` + fixSuggestions();
 });
@@ -888,6 +902,8 @@ async function handleTestFile(file){
     const fromTable = scoreTableResult(auto);
     const res = fromTable || auto;
     applyParsed(res, file.name);
+    const unsure = Math.abs(sumMax() - 100) > 0.01 || state.items.some(i => i.max == null) || editorFromItems().some(q => q.missing);
+    if (unsure && res.items.length) openEditor("fix"); else $("#builder").classList.add("hidden");
     // Word file whose score table is missing or out of date → offer the same file with an updated table
     const okTotal = Math.abs(sumMax() - 100) < 0.01;
     $("#myWordBtn").classList.toggle("hidden", !lastDocx);
@@ -1520,45 +1536,146 @@ const SAMPLE = `מבחן מחצית א' במתמטיקה – כיתה ז'
 ב. הציבו a = −1, b = 2 וחשבו את ערך הביטוי 10 נק'
 בהצלחה!`;
 $("#sampleBtn").onclick = () => { $("#testText").value = SAMPLE; state.title = "מבחן לדוגמה"; applyParsed(parseTest(SAMPLE), ""); };
-/* ---------- test skeleton builder ---------- */
-let bQs = [{subs:2, pts:10}, {subs:0, pts:20}, {subs:3, pts:10}, {subs:0, pts:15}, {subs:0, pts:15}];
-function renderBuilder(){
+/* ---------- question editor: build a new test, or fix what was detected ----------
+   eQs: [{ q, missing, subs:[{ letter, pts }], pts, text }] – a question has either sub-items or its own points */
+let eQs = [], eMode = "new";
+const eTotal = () => eQs.reduce((a, q) => a + (/בונוס/.test(q.q) ? 0 : (q.subs.length ? q.subs.reduce((x, s) => x + (+s.pts || 0), 0) : (+q.pts || 0))), 0);
+function editorFromItems(){
+  const qs = [];
+  for (const it of state.items){
+    let q = qs.find(z => z.q === String(it.q));
+    if (!q){ q = { q:String(it.q), missing:false, subs:[], pts:null, text:"" }; qs.push(q); }
+    if (it.sub) q.subs.push({ letter:it.sub, pts:it.max });
+    else q.pts = it.max;
+  }
+  // questions missing from the numbering (1, 2, 4 → 3 is missing): show them so the teacher can fill them in
+  const nums = qs.map(q => parseInt(q.q)).filter(n => !isNaN(n)), max = nums.length ? Math.max(...nums) : 0;
+  for (let n = 1; n < max; n++) if (!nums.includes(n)){
+    const at = qs.findIndex(q => parseInt(q.q) > n);
+    qs.splice(at < 0 ? qs.length : at, 0, { q:String(n), missing:true, subs:[], pts:null, text:"" });
+  }
+  return qs;
+}
+function openEditor(mode){
+  eMode = mode;
+  if (mode === "new") eQs = [
+    { q:"1", subs:[{ letter:"א", pts:10 }, { letter:"ב", pts:10 }], pts:null, text:"" }, { q:"2", subs:[], pts:20, text:"" },
+    { q:"3", subs:[{ letter:"א", pts:10 }, { letter:"ב", pts:10 }, { letter:"ג", pts:10 }], pts:null, text:"" },
+    { q:"4", subs:[], pts:15, text:"" }, { q:"5", subs:[], pts:15, text:"" }];
+  else eQs = editorFromItems();
+  $("#eTitle").textContent = mode === "new" ? "בניית מבחן חדש" : "השאלות והניקוד – בדיקה ותיקון";
+  $("#eHelp").innerHTML = mode === "new"
+    ? "קובעים כמה שאלות, כמה סעיפים וכמה נקודות לכל סעיף. מקבלים קובץ Word מוכן (כותרות, סעיפים, ניקוד וטבלת ניקוד) ורק מדביקים את השאלות. אותו מבנה הוא גם המיפוי."
+    : "כך זיהיתי את המבחן. אפשר לתקן לכל שאלה את מספר הסעיפים ואת הניקוד של כל סעיף, ולהשלים שאלות שלא נמצאו (באדום). הסכום למטה מתעדכן – צריך להגיע ל-100. אפשר גם להדביק את טקסט השאלה ב„📋 הדבקת השאלה” ואזהה בו סעיפים וניקוד.";
+  $("#builder").classList.remove("hidden");
+  renderEditor();
+  $("#builder").scrollIntoView({ behavior:"smooth", block:"start" });
+}
+function renderEditor(){
   let h = "";
-  bQs.forEach((q, i) => {
-    const tot = q.subs ? q.subs * q.pts : q.pts;
-    h += `<div class="brow"><b>שאלה ${i + 1}</b>
-      <label>סעיפים <select data-b="subs" data-i="${i}">${[0,2,3,4,5,6,7,8].map(n => `<option value="${n}"${n === q.subs ? " selected" : ""}>${n ? HEB_LETTERS.slice(0, n).split("").join(",") : "בלי"}</option>`).join("")}</select></label>
-      <label>${q.subs ? "נקודות לכל סעיף" : "נקודות"} <input type="number" min="0" step="0.5" data-b="pts" data-i="${i}" value="${q.pts}"></label>
-      <span class="bsum">= ${fmt(tot)} נק׳</span>
-      <button class="mini" type="button" data-bdel="${i}" title="מחיקת שאלה">✕</button></div>`;
+  eQs.forEach((q, i) => {
+    const sum = q.subs.length ? q.subs.reduce((x, s) => x + (+s.pts || 0), 0) : (+q.pts || 0);
+    const noPts = q.subs.length ? q.subs.some(s => s.pts == null || s.pts === "") : (q.pts == null || q.pts === "");
+    h += `<div class="brow${q.missing || noPts ? " missing" : ""}"><b>שאלה <input data-e="q" data-i="${i}" value="${esc(q.q)}" style="width:52px"></b>
+      ${q.missing ? '<span class="tag">לא נמצאה – השלימו</span>' : noPts ? '<span class="tag">חסר ניקוד</span>' : ""}
+      <label>סעיפים <select data-e="nsubs" data-i="${i}">${[0,2,3,4,5,6,7,8].map(n => `<option value="${n}"${n === q.subs.length ? " selected" : ""}>${n ? HEB_LETTERS.slice(0, n).split("").join(",") : "בלי"}</option>`).join("")}</select></label>
+      ${q.subs.length
+        ? `<span class="subs">${q.subs.map((s, k) => `<label>${s.letter} <input type="number" min="0" step="0.5" data-e="sp" data-i="${i}" data-k="${k}" value="${s.pts ?? ""}" placeholder="נק׳"></label>`).join("")}</span>`
+        : `<label>נקודות <input type="number" min="0" step="0.5" data-e="pts" data-i="${i}" value="${q.pts ?? ""}"></label>`}
+      <span class="bsum">= ${fmt(sum)} נק׳</span>
+      <button class="mini add" type="button" data-epaste="${i}" title="הדבקת טקסט השאלה">📋 הדבקת השאלה</button>
+      <button class="mini" type="button" data-edel="${i}" title="מחיקת שאלה">✕</button>
+      <textarea data-e="text" data-i="${i}" class="${q.showText ? "" : "hidden"}" placeholder="הדביקו כאן את טקסט השאלה (עם הסעיפים והניקוד) – אזהה אותם וימולאו בשורה">${esc(q.text || "")}</textarea></div>`;
   });
   $("#bRows").innerHTML = h;
-  const total = bQs.reduce((a, q) => a + (q.subs ? q.subs * q.pts : q.pts), 0);
-  $("#bTotal").className = "chip " + (Math.abs(total - 100) < 0.01 ? "ok" : "bad");
-  $("#bTotal").innerHTML = `סה״כ: <b>${fmt(total)}</b>${Math.abs(total - 100) < 0.01 ? " ✓" : " (צריך 100)"}`;
+  const total = eTotal(), ok = Math.abs(total - 100) < 0.01;
+  $("#bTotal").className = "chip " + (ok ? "ok" : "bad");
+  $("#bTotal").innerHTML = `סה״כ: <b>${fmt(total)}</b> / 100${ok ? " ✓" : total < 100 ? ` – חסרות ${fmt(100 - total)}` : ` – ${fmt(total - 100)} יותר מדי`}`;
 }
-$("#bRows").addEventListener("change", e => {
-  const el = e.target; if (!el.dataset.b) return;
-  bQs[+el.dataset.i][el.dataset.b] = +el.value || 0; renderBuilder();
+// live total while typing, full redraw on structural changes
+$("#bRows").addEventListener("input", e => {
+  const el = e.target, q = eQs[+el.dataset.i]; if (!q) return;
+  if (el.dataset.e === "sp") q.subs[+el.dataset.k].pts = el.value === "" ? null : +el.value;
+  else if (el.dataset.e === "pts") q.pts = el.value === "" ? null : +el.value;
+  else if (el.dataset.e === "q") q.q = el.value.trim();
+  else if (el.dataset.e === "text") q.text = el.value;
+  else return;
+  if (el.dataset.e !== "text"){ q.missing = false;
+    const total = eTotal(), ok = Math.abs(total - 100) < 0.01;
+    $("#bTotal").className = "chip " + (ok ? "ok" : "bad");
+    $("#bTotal").innerHTML = `סה״כ: <b>${fmt(total)}</b> / 100${ok ? " ✓" : total < 100 ? ` – חסרות ${fmt(100 - total)}` : ` – ${fmt(total - 100)} יותר מדי`}`;
+    const row = el.closest(".brow"), sum = q.subs.length ? q.subs.reduce((x, s) => x + (+s.pts || 0), 0) : (+q.pts || 0);
+    row.querySelector(".bsum").textContent = `= ${fmt(sum)} נק׳`;
+    // no redraw while typing (it would take the focus away): just update the red marking
+    const noPts = q.subs.length ? q.subs.some(s => s.pts == null) : q.pts == null;
+    row.classList.toggle("missing", noPts);
+    const tag = row.querySelector(".tag"); if (tag && !noPts) tag.remove();
+  }
 });
-$("#bRows").addEventListener("click", e => { const b = e.target.closest("[data-bdel]"); if (b){ bQs.splice(+b.dataset.bdel, 1); renderBuilder(); } });
-$("#bAdd").onclick = () => { bQs.push({ subs:0, pts:10 }); renderBuilder(); };
-function builderToItems(){
-  const lvl = "", items = [];          // thinking level is left for the teacher to choose
-  bQs.forEach((q, i) => {
-    if (!q.subs) items.push({ id:nid(), q:String(i + 1), sub:"", topic:"", level:lvl, max:q.pts, desc:"" });
-    else for (let k = 0; k < q.subs; k++) items.push({ id:nid(), q:String(i + 1), sub:HEB_LETTERS[k], topic:"", level:lvl, max:q.pts, desc:"" });
-  });
-  state.items = items; render(); save();
+$("#bRows").addEventListener("change", e => {
+  const el = e.target, q = eQs[+el.dataset.i]; if (!q) return;
+  if (el.dataset.e === "nsubs"){
+    const n = +el.value;
+    if (!n){ q.pts = q.subs.reduce((x, s) => x + (+s.pts || 0), 0) || q.pts; q.subs = []; }
+    else {
+      const old = q.subs, each = !old.length && q.pts ? Math.round(q.pts / n * 2) / 2 : null;
+      q.subs = Array.from({ length:n }, (_, k) => old[k] || { letter:HEB_LETTERS[k], pts:each });
+    }
+    q.missing = false; renderEditor();
+  }
+  if (el.dataset.e === "text") pasteQuestion(q);
+});
+// pasted question text → sub-items and points
+function pasteQuestion(q){
+  const t = (q.text || "").trim(); if (!t) return;
+  const res = parseTest(/^\s*(שאלה|\d+[.)])/.test(t) ? t : `שאלה ${q.q}\n${t}`);
+  const items = res.items.filter(it => it.q === String(res.items[0] && res.items[0].q));
+  if (!items.length) return;
+  if (items.some(it => it.sub)) q.subs = items.map(it => ({ letter:it.sub, pts:it.max, desc:it.desc, level:it.level }));
+  else { q.subs = []; q.pts = items[0].max ?? q.pts; q.desc = items[0].desc; q.level = items[0].level; }
+  q.missing = false; q.showText = true; renderEditor();
 }
-$("#emptyBtn").onclick = () => { $("#builder").classList.toggle("hidden"); renderBuilder(); };
+$("#bRows").addEventListener("click", e => {
+  const del = e.target.closest("[data-edel]"), pst = e.target.closest("[data-epaste]");
+  if (del){ eQs.splice(+del.dataset.edel, 1); renderEditor(); }
+  if (pst){ const q = eQs[+pst.dataset.epaste]; q.showText = !q.showText; renderEditor();
+    if (q.showText){ const ta = $(`#bRows textarea[data-i="${pst.dataset.epaste}"]`); ta && ta.focus(); } }
+});
+$("#bAdd").onclick = () => {
+  const last = eQs.filter(q => !/בונוס/.test(q.q)).map(q => parseInt(q.q)).filter(n => !isNaN(n));
+  eQs.push({ q:String((last.length ? Math.max(...last) : 0) + 1), subs:[], pts:null, text:"" }); renderEditor();
+};
+function editorToItems(){
+  const old = state.items, items = [];
+  const find = (q, sub) => old.find(it => String(it.q) === q && (it.sub || "") === sub);
+  for (const q of eQs){
+    const list = q.subs.length ? q.subs.map(s => ({ sub:s.letter, max:s.pts, desc:s.desc, level:s.level })) : [{ sub:"", max:q.pts, desc:q.desc, level:q.level }];
+    for (const x of list){
+      const prev = find(q.q, x.sub);
+      items.push({ id: prev ? prev.id : nid(), q:q.q, sub:x.sub, topic: prev ? prev.topic : "",
+        level: x.level || (prev ? prev.level : (eMode === "new" ? "" : guessLevel(x.desc || ""))),
+        max: x.max == null || x.max === "" ? null : +x.max, desc: x.desc || (prev ? prev.desc : "") });
+    }
+  }
+  state.items = items;
+  const ids = new Set(items.map(i => i.id));
+  state.students.forEach(s => { for (const k in s.scores) if (!ids.has(k)) delete s.scores[k]; });
+  render(); save();
+}
+$("#emptyBtn").onclick = () => openEditor("new");
+$("#openEditorBtn").onclick = () => openEditor("fix");
+$("#bClose").onclick = () => $("#builder").classList.add("hidden");
 $("#bMap").onclick = () => {
-  builderToItems();
-  setMsg("#testMsg", "ok", "✓ נבנה מיפוי לפי המבנה. אפשר לקבוע רמת חשיבה לכל סעיף בטבלה, ולהוריד את שלד ה-Word בשלב 4.");
+  editorToItems();
+  const t = sumMax();
+  setMsg("#testMsg", Math.abs(t - 100) < 0.01 ? "ok" : "warn", `✓ המיפוי עודכן: ${state.items.length} עמודות ניקוד, סך הניקוד <b>${fmt(t)}</b>${Math.abs(t - 100) < 0.01 ? " ✓" : " (לא 100)"}.`
+    + (lastDocx ? `<div class="row" style="margin-top:10px"><button class="btn primary" type="button" id="fixTableBtn2">⬇ הורדת המבחן שלי עם טבלת ניקוד</button></div>` : ""));
+  if (lastDocx) $("#fixTableBtn2").onclick = async () => { await exportWithScoreTable(); $("#fixTableBtn2").insertAdjacentHTML("afterend", lastLink); };
+  $("#builder").classList.add("hidden");
   $("#step3").scrollIntoView({ behavior:"smooth", block:"start" });
 };
 $("#bWord").onclick = async () => {
-  builderToItems();
+  editorToItems();
   await exportSkeleton();
   setMsg("#testMsg", "ok", "✓ שלד המבחן הורד, והמיפוי נבנה לפי אותו מבנה (בשלב 3). אחרי שתמלאו את המבחן אין צורך להעלות אותו – המיפוי כבר מוכן. אם תשנו ניקוד במבחן, עדכנו גם כאן." + lastLink);
 };
