@@ -343,6 +343,9 @@ function parseTest(raw){
     }
     m = line.match(SUB_RE);
     if (m && isPlausibleSub(q, m[1], line)){ newSub(m[1], line, m[2]); continue; }
+    // "א באיזו שעה…" – the next letter in order, alone, followed by text
+    m = line.match(/^([א-י])\s+(\S.{2,})$/);
+    if (m && HEB_LETTERS.indexOf(m[1]) === (q.subs.length ? HEB_LETTERS.indexOf(q.subs[q.subs.length - 1].letter) + 1 : 0)){ newSub(m[1], line, m[2]); continue; }
 
     const p = findPoints(line);
     if (ONLY_PTS_RE.test(line)){
@@ -363,9 +366,16 @@ function parseTest(raw){
     (sub ? sub.text : q.text).push(stripPoints(line));
   }
   for (const qq of qs){
-    // multiple-choice options (short, no points) are not sub-items
-    if (qq.subs.length >= 2 && qq.subs.every(s => { const t = s.text.join(" ").trim(); return s.points == null && t.length > 0 && t.length < 20; })){
+    // multiple-choice options (short, no points, or the question says "circle the right answer") are not sub-items
+    const qText = qq.text.join(" ");
+    const isMC = /(הקיפו|הקף|סמנו|בחרו|בחר).{0,25}(התשובה|הנכונ)/.test(qText);
+    if (qq.subs.length >= 2 && qq.subs.every(s => { const t = [...s.text.join(" ").trim()]; return s.points == null && t.length > 0 && (isMC || t.length < 25); })){
       qq.text.push(...qq.subs.map(s => s.letter + ". " + s.text.join(" "))); qq.subs = [];
+    }
+    // a single sub-item "א" (e.g. one item split into parts of 2 points) is the whole question
+    if (qq.subs.length === 1 && qq.subs[0].letter === "א"){
+      const s0 = qq.subs[0];
+      qq.text.push(...s0.text); if (qq.points == null) qq.points = s0.points; qq.subs = [];
     }
     // sub-items start at ב → the first one was unlabeled (usually a picture)
     if (qq.subs.length && qq.subs[0].letter !== "א"){
@@ -427,7 +437,7 @@ const LEVEL_RULES = [
   { lvl:3, re:/(תנו דוגמה|תן דוגמה|הציעו|הצע |חקרו|חקור|שערו|הכלילו|מצאו את כל|כמה דרכים|בכמה דרכים|דרך נוספת|ייתכנו|המציאו|חברו שאלה|נסחו|בנו דוגמה)/ },
   // 2 = process thinking: explain, justify, prove, judge a claim
   { lvl:2, re:/(הסביר|הסבר|נמק|הוכיח|הוכח|מדוע|למה |האם |הראו ש|הראה ש|בדקו אם|בדוק אם|השוו(?![א-ת])|ייתכן|טוען|צדק|שגיאה|טעות|בעיה|בעית)/ },
-  { lvl:0, re:/(סמנו|סמן |הקיפו|הקף |השלימו|השלם |כתבו את השם|מה השם|מה שם|הגדירו|הגדר |זהו |זהה |התאימו|התאם |העתיקו|נכון או לא|נכון\/לא|רשמו את|קראו|מהו ה|מהי ה|איזה מ|איזו מ|מי מ)/ },
+  { lvl:0, re:/(סמנו|סמן |הקיפו|הקף |השלימו|השלם |כתבו את השם|מה השם|מה שם|הגדירו|הגדר |זהו |זהה |התאימו|(?:^|\s)התאם |העתיקו|נכון או לא|נכון\/לא|רשמו את|קראו|מהו ה|מהי ה|איזה מ|איזו מ|מי מ)/ },
   { lvl:1, re:/(חשב|פתר|מצא|שרטט|סדר|בנו|הציב|כנס|פשט|הרחיב|צייר|מדד|השוו בין|קבע)/ }
 ];
 function guessLevel(text){
@@ -469,15 +479,45 @@ async function pdfRows(buf){
       if (!it.str || !it.str.trim()) continue;
       const y = Math.round(it.transform[5] / 3) * 3;
       if (!rows.has(y)) rows.set(y, []);
-      rows.get(y).push({ x: it.transform[4] + (it.width || 0) / 2, s: it.str.trim() });
+      const x0 = it.transform[4], w = it.width || 0;
+      rows.get(y).push({ x0, x1: x0 + w, h: it.height || 10, s: it.str });
     }
-    [...rows.entries()].sort((a, b) => b[0] - a[0]).forEach(([, arr]) => out.push(arr.sort((a, b) => b.x - a.x)));
+    [...rows.entries()].sort((a, b) => b[0] - a[0]).forEach(([, arr]) => out.push(pdfRowSegments(arr)));
   }
   // some PDFs store Hebrew in visual (reversed) order: final letters then sit at the start of words
   const all = out.flat().map(c => c.s).join(" ");
   const finalsAtStart = (all.match(/(^|\s)[ךםןףץ]/g) || []).length, finalsAtEnd = (all.match(/[ךםןףץ](?=\s|$|[.,:])/g) || []).length;
   if (finalsAtStart > finalsAtEnd) out.forEach(r => r.forEach(c => { if (/[א-ת]/.test(c.s)) c.s = [...c.s].reverse().join("").replace(/[()]/g, m => m === "(" ? ")" : "("); }));
   return out;
+}
+/* PDF stores pieces of text by position. Pieces that touch (gap smaller than a space) belong to one word:
+   "נקודו"+"ת", "ה"+"קיפו", or the digits "1","3" of 13. Words are then put in reading order:
+   right-to-left for Hebrew, left-to-right for runs of numbers / Latin / math. */
+const isHeb = s => /[א-ת]/.test(s);
+function logicalOrder(pieces){            // pieces in visual left→right order
+  const r = pieces.slice().reverse(), out = [];
+  for (let i = 0; i < r.length;){
+    if (isHeb(r[i])){ out.push(r[i++]); continue; }
+    let j = i; while (j < r.length && !isHeb(r[j])) j++;
+    out.push(...r.slice(i, j).reverse()); i = j;
+  }
+  return out;
+}
+function pdfRowSegments(items){
+  items.sort((a, b) => a.x0 - b.x0);
+  const segs = [];
+  for (const it of items){
+    const last = segs[segs.length - 1];
+    const tol = Math.max(0.8, 0.12 * Math.min(it.h, last ? last.h : it.h));
+    if (last && it.x0 - last.x1 < tol){ last.parts.push(it.s.trim()); last.x1 = Math.max(last.x1, it.x1); }
+    else segs.push({ x0: it.x0, x1: it.x1, h: it.h, parts: [it.s.trim()] });
+  }
+  const words = segs.map(g => ({ x: (g.x0 + g.x1) / 2, s: logicalOrder(g.parts).join("") }));
+  // whole row in reading order
+  const order = logicalOrder(words.map((_, i) => String(i)).map(i => words[+i].s));
+  const used = new Set(), res = [];
+  for (const s of order){ const k = words.findIndex((w, i) => !used.has(i) && w.s === s); used.add(k); res.push(words[k]); }
+  return res;
 }
 /* Reads a .docx directly, so Word's automatic numbering (א. ב. ג. / 1. 2. 3.) is kept as text,
    and text boxes (e.g. a question number inside a circle) come out in reading order. */
