@@ -33,7 +33,7 @@ main{max-width:1200px;margin:0 auto;padding:16px}
 .drop small{color:var(--muted)}
 textarea{width:100%;min-height:150px;border:1px solid var(--line);border-radius:10px;padding:10px;font:inherit;resize:vertical;background:#fff;color:var(--ink)}
 input[type=text],input[type=number],select{font:inherit;color:var(--ink)}
-.btn{font:inherit;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:9px;padding:8px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.btn{text-decoration:none;font:inherit;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:9px;padding:8px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
 .btn:hover{border-color:var(--brand);color:var(--brand)}
 .btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
 .btn.primary:hover{filter:brightness(1.08);color:#fff}
@@ -120,6 +120,7 @@ footer{color:var(--muted);text-align:center;font-size:13px;padding:10px 16px 30p
       </div>
       <input type="file" id="testFile" accept=".docx,.pdf,.txt,.md,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
       <div class="row" style="margin-top:12px">
+        <a class="btn" href="template.docx" download="תבנית מבחן למיפוי.docx">⬇ תבנית Word למבחן</a>
         <button class="btn" id="sampleBtn" type="button">טעינת מבחן לדוגמה</button>
         <button class="btn" id="emptyBtn" type="button">מיפוי ריק (בניה ידנית)</button>
       </div>
@@ -129,6 +130,7 @@ footer{color:var(--muted);text-align:center;font-size:13px;padding:10px 16px 30p
       <div class="row" style="margin-top:8px"><button class="btn primary" id="parseBtn" type="button">ניתוח הטקסט</button></div>
     </div>
   </div>
+  <p class="legend" style="margin-top:10px">טיפ: מבחן שנבנה ב<b>תבנית ה-Word</b> (עם טבלת הניקוד בסוף) ממופה בדיוק לפי הטבלה. כל מבחן אחר מזוהה אוטומטית – כדאי לעבור על הכותרות בטבלה.</p>
   <div class="msg" id="testMsg"></div>
 </section>
 
@@ -281,7 +283,7 @@ const HEB_ORD = {"ראשונה":1,"שנייה":2,"שניה":2,"שלישית":3,"
 const SUB_RE = new RegExp("^(?:סעיף\\s*)?\\(?([" + HEB_LETTERS + "])(?:\\s*['.)\\-:]|\\))\\s*(.*)$");
 const SUB_RE2 = new RegExp("^סעיף\\s+([" + HEB_LETTERS + "])'?\\s*[:.\\-]?\\s*(.*)$");
 const NUM_Q_RE = /^(\d{1,2})\s*[.)]\s+(.+)$/;
-const STOP_RE = /(בהצלחה|למילוי על ידי המורה|למילוי ע"י המורה|טבלת ניקוד)/;
+const STOP_RE = /(בהצלחה|למילוי על ידי המורה|למילוי ע"י המורה|טבלת ניקוד|^ניקוד מרבי$)/;
 
 const BARE_NUM_RE = /^(\d{1,2})\s*[.)]?$/;
 const STRONG_SUB_RE = /^\(?([א-ת])\s*[.)]\s*(.*)$/;      // "ב. ..." / "ב) ..." / "(ב) ..."
@@ -431,6 +433,84 @@ function toItems(qs){
   }
   return { items, warnings, questions:qs.length };
 }
+/* =========================================================
+   SCORE TABLE ("למילוי על ידי המורה") – when the test has one, it decides the mapping
+   rows: שאלה / סעיף / ניקוד מרבי / [רמת חשיבה] / [נושא]
+   ========================================================= */
+const TBL_Q = /^(שאלה|שאלות|מס'? ?שאלה)$/, TBL_MAX = /^ניקוד (מרבי|מירבי|מקסימלי)$|^ניקוד מקס|^מקסימום$/;
+const TBL_SUB = /^(סעיף|סעיפים)$/, TBL_LVL = /^(רמת חשיבה|רמה)$/, TBL_TOP = /^נושא$/;
+const cellNorm = c => normalize(String(c ?? "")).replace(/\s+/g, " ").trim();
+const subNorm = c => { c = cellNorm(c).replace(/['.]/g, ""); return /^[-—–_]*$/.test(c) ? "" : c; };
+function matchLevel(t){
+  t = cellNorm(t); if (!t) return null;
+  return state.levels.find(l => l === t) || state.levels.find(l => l.includes(t) || t.includes(l)) || t;
+}
+// Word tables (already in columns)
+function itemsFromGrid(R){
+  R = R.map(r => r.map(cellNorm));
+  const rowOf = re => R.findIndex(r => r.some(c => re.test(c)));
+  const iq = rowOf(TBL_Q), imax = rowOf(TBL_MAX);
+  if (iq < 0 || imax < 0) return [];
+  const isub = rowOf(TBL_SUB), ilvl = rowOf(TBL_LVL), itop = rowOf(TBL_TOP);
+  const labelCol = R[iq].findIndex(c => TBL_Q.test(c));
+  const width = Math.max(...R.map(r => r.length)), out = [];
+  for (let j = 0; j < width; j++){
+    if (j === labelCol) continue;
+    const qc = R[iq][j] || "";
+    if (/סה"?כ|סך/.test(qc)) continue;
+    const q = (qc.match(/\d+/) || [""])[0];
+    const max = parseFloat((R[imax][j] || "").replace(/[^\d.]/g, ""));
+    if (!q && isNaN(max)) continue;
+    out.push({ q, sub: isub >= 0 ? subNorm(R[isub][j]) : "", max: isNaN(max) ? null : max,
+      level: ilvl >= 0 ? R[ilvl][j] : "", topic: itop >= 0 ? R[itop][j] : "" });
+  }
+  return out;
+}
+// PDF: no table structure – columns come from the x position of the max-points numbers
+function itemsFromPdf(rows){
+  const txt = r => r.map(c => c.s).join(" ");
+  const out = [];
+  rows.forEach((r, i) => {
+    if (!/^שאלה(\s+\d+)+$/.test(txt(r))) return;
+    const block = rows.slice(i, i + 8);
+    const find = re => block.find(rr => re.test(txt(rr)));
+    const maxRow = find(/^ניקוד (מרבי|מירבי)/); if (!maxRow) return;
+    const subRow = find(/^סעיף/), lvlRow = find(/^רמת חשיבה/);
+    // a level that wraps onto two lines ("חשיבה" / "תהליכית") sits on the rows just above and below the label row
+    const li = lvlRow ? block.indexOf(lvlRow) : -1;
+    const lvlRows = li < 0 ? [] : [block[li - 1], lvlRow, block[li + 1]].filter(rr => rr && (rr === lvlRow || !/^(שאלה|סעיף|ניקוד)/.test(txt(rr))));
+    const cols = maxRow.filter(c => /^\d+(\.\d+)?$/.test(c.s)).sort((a, b) => b.x - a.x);   // reading order: right → left
+    const near = (row, x) => { if (!row) return ""; let b = null; for (const c of row) if (!/^(שאלה|סעיף|ניקוד|מרבי|רמת|חשיבה)$/.test(c.s) && (!b || Math.abs(c.x - x) < Math.abs(b.x - x))) b = c; return b && Math.abs(b.x - x) < 40 ? b.s : ""; };
+    const qNums = r.filter(c => /^\d+$/.test(c.s)).sort((a, b) => b.x - a.x).map(c => c.s);
+    let qi = -1;
+    cols.forEach(c => {
+      const sub = subRow ? subNorm(near(subRow, c.x)) : "";
+      if (!subRow) qi++; else if (!sub || sub === "א") qi++;
+      out.push({ q: qNums[Math.min(Math.max(qi, 0), qNums.length - 1)] || "", sub, max: +c.s, level: lvlRows.map(rr => near(rr, c.x)).filter(Boolean).join(" "), topic: "" });
+    });
+  });
+  return out;
+}
+function scoreTableResult(auto){
+  let found = [];
+  for (const t of docTables) found.push(...itemsFromGrid(t));
+  if (!found.length && docPdfRows) found = itemsFromPdf(docPdfRows);
+  found = found.filter(f => f.q);
+  if (!found.length) return null;
+  const items = found.map(f => {
+    const a = auto.items.find(it => String(it.q) === f.q && (it.sub || "") === f.sub);   // reuse description / guessed level
+    return { id:nid(), q:f.q, sub:f.sub, topic:f.topic || "", level: matchLevel(f.level) || (a ? a.level : guessLevel("")),
+      max:f.max, desc: a ? a.desc : "" };
+  });
+  const warnings = [];
+  const missing = items.filter(it => it.max == null);
+  if (missing.length) warnings.push("בטבלת הניקוד חסר ניקוד מרבי ל: " + missing.map(it => it.q + it.sub).join(", "));
+  const autoTotal = auto.items.reduce((x, it) => x + (+it.max || 0), 0), tblTotal = items.reduce((x, it) => x + (+it.max || 0), 0);
+  if (Math.abs(autoTotal - 100) < 0.01 && Math.abs(autoTotal - tblTotal) > 0.01)
+    warnings.push(`בגוף המבחן זוהה ניקוד אחר (${fmt(autoTotal)}). המיפוי נבנה לפי טבלת הניקוד – כדאי לוודא שהיא מעודכנת.`);
+  return { items, warnings, questions: new Set(items.map(i => i.q)).size, fromTable: true };
+}
+
 /* thinking-level heuristic by instruction verbs */
 const LEVEL_RULES = [
   // 3 = open: several possible answers / student invents or investigates
@@ -447,8 +527,10 @@ function guessLevel(text){
 }
 
 /* ---------- file → text ---------- */
+let docTables = [], docPdfRows = null;   // structure of the last uploaded file, for the score table
 async function fileToText(file){
   const name = file.name.toLowerCase();
+  docTables = []; docPdfRows = null;
   if (name.endsWith(".docx")){
     const buf = await file.arrayBuffer();
     try { return await docxToText(buf); }
@@ -461,7 +543,8 @@ async function fileToText(file){
   }
   if (name.endsWith(".doc")) throw new Error("קבצי ‎.doc‎ ישנים לא נתמכים – שמרו את הקובץ ב-Word בתור ‎.docx‎ ונסו שוב.");
   if (name.endsWith(".pdf")){
-    return (await pdfRows(await file.arrayBuffer())).map(r => r.map(c => c.s).join(" ")).join("\n");
+    docPdfRows = await pdfRows(await file.arrayBuffer());
+    return docPdfRows.map(r => r.map(c => c.s).join(" ")).join("\n");
   }
   return decodeText(await file.arrayBuffer());
 }
@@ -577,9 +660,16 @@ async function docxToText(buf){
   const walk = el => {
     for (const n of el.children){
       if (n.localName === "Fallback") continue;          // duplicate of a text box (old format)
-      if (n.localName === "p") para(n); else walk(n);
+      if (n.localName === "p") para(n);
+      else { if (n.localName === "tbl") docTables.push(tableCells(n)); walk(n); }
     }
   };
+  // table → rows of cell texts; a merged cell (gridSpan) is repeated in every column it covers
+  const tableCells = tbl => kids(tbl, "tr").map(tr => kids(tr, "tc").flatMap(tc => {
+    const txt = [...tc.getElementsByTagNameNS(W_NS, "t")].map(t => t.textContent).join("");
+    const span = +(val(kid(kid(tc, "tcPr"), "gridSpan")) || 1);
+    return Array(span).fill(txt);
+  }));
   const para = p => {
     let text = "";
     const boxes = [];
@@ -655,7 +745,8 @@ function applyParsed(res, source){
   const ids = new Set(state.items.map(i => i.id));
   state.students.forEach(s => { for (const k in s.scores) if (!ids.has(k)) delete s.scores[k]; });
   const total = sumMax();
-  let html = `✓ זוהו <b>${res.questions}</b> שאלות ו-<b>${res.items.length}</b> עמודות ניקוד${source ? " מתוך " + esc(source) : ""}. סך הניקוד: <b>${fmt(total)}</b>.`;
+  let html = (res.fromTable ? "✓ נמצאה טבלת ניקוד במבחן – המיפוי נבנה ממנה. " : "")
+    + `✓ זוהו <b>${res.questions}</b> שאלות ו-<b>${res.items.length}</b> עמודות ניקוד${source ? " מתוך " + esc(source) : ""}. סך הניקוד: <b>${fmt(total)}</b>.`;
   if (Math.abs(total - 100) > 0.01) html += ` <br>⚠ הסכום אינו 100 – הציון יחושב באחוזים מתוך ${fmt(total)}.`;
   if (res.warnings.length) html += "<br>" + res.warnings.map(w => "⚠ " + esc(w)).join("<br>");
   setMsg("#testMsg", res.warnings.length || Math.abs(total - 100) > 0.01 ? "warn" : "ok", html);
@@ -669,7 +760,9 @@ async function handleTestFile(file){
   try {
     const text = await fileToText(file);
     $("#testText").value = text.trim();
-    applyParsed(parseTest(text), file.name);
+    const auto = parseTest(text);
+    const fromTable = scoreTableResult(auto);
+    applyParsed(fromTable || auto, file.name);
   } catch(e){ setMsg("#testMsg", "bad", esc(e.message || e)); }
 }
 
