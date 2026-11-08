@@ -87,7 +87,7 @@ table.map th .colbtns{display:flex;justify-content:center;gap:2px}
 .mini{border:0;background:transparent;cursor:pointer;color:var(--muted);font-size:15px;padding:2px 6px;border-radius:6px;font:inherit}
 .mini:hover{background:var(--bad-soft);color:var(--bad)}
 .mini.add:hover{background:var(--brand-soft);color:var(--brand)}
-th.lvl-0{background:var(--lvl1)!important} th.lvl-1{background:var(--lvl2)!important} th.lvl-2{background:var(--lvl3)!important} th.lvl-3{background:var(--lvl4)!important}
+th.lvl-0{background:var(--lvl1)!important} th.lvl-1{background:var(--lvl2)!important} th.lvl-2{background:var(--lvl3)!important} th.lvl-3{background:var(--lvl4)!important} th.lvl-4{background:#ece6fb!important}
 .legend{color:var(--muted);font-size:14px;margin-top:8px}
 .levels-edit{margin-top:10px;font-size:14px;color:var(--muted)}
 .levels-edit input{border:1px solid var(--line);border-radius:7px;padding:3px 8px;width:100%;max-width:560px}
@@ -172,9 +172,9 @@ footer{color:var(--muted);text-align:center;font-size:13px;padding:10px 16px 30p
     <button class="btn danger" id="trimBtn" type="button">מחיקת שורות ריקות</button>
   </div>
   <div class="chips" id="chips"></div>
-  <div class="legend">רמת החשיבה מוצעת אוטומטית לפי מילות ההוראה (חשבו → יישום, הסבירו/הוכיחו → חשיבה גבוהה…) – כדאי לעבור ולאשר.</div>
+  <div class="legend">רמת החשיבה מוצעת אוטומטית לפי מילות ההוראה (סמנו → ידע וזיהוי, חשבו → אלגוריתמי, הסבירו/נמקו → חשיבה תהליכית, הציעו/תנו דוגמה → פתוח) – כדאי לעבור ולאשר.</div>
   <details class="levels-edit"><summary>עריכת רשימת רמות החשיבה</summary>
-    <p>מופרדות בפסיק. למשל: ידע/הכרה, יישום, חשיבה גבוהה</p>
+    <p>מופרדות בפסיק. אפשר להוסיף רמה חמישית, למשל: ידע וזיהוי, אלגוריתמי, חשיבה תהליכית, פתוח, אתגר</p>
     <input type="text" id="levelsInput">
   </details>
 </section>
@@ -215,7 +215,9 @@ function loadLib(key){
 }
 
 /* ---------- state ---------- */
-const DEFAULT_LEVELS = ["ידע/הכרה", "יישום", "חשיבה גבוהה"];
+const DEFAULT_LEVELS = ["ידע וזיהוי", "אלגוריתמי", "חשיבה תהליכית", "פתוח"];
+const LEVEL_TARGETS = { "ידע וזיהוי":20, "אלגוריתמי":30, "חשיבה תהליכית":30, "פתוח":20 };
+const OLD_LEVELS = { "ידע/הכרה":"ידע וזיהוי", "יישום":"אלגוריתמי", "חשיבה גבוהה":"חשיבה תהליכית" };
 const DEFAULT_ROWS = 40;
 const DEFAULT_ROWS_NOTE = "נוצרו 40 שורות תלמידים כברירת מחדל. ניתן למחוק שורות מיותרות או להוסיף חדשות חופשי – זה לא פוגע במבנה המיפוי.";
 let uid = 1;
@@ -236,7 +238,14 @@ function save(){ try { localStorage.setItem("mipui-draft-v1", JSON.stringify(sta
 function restore(){
   try {
     const s = JSON.parse(localStorage.getItem("mipui-draft-v1") || "null");
-    if (s && Array.isArray(s.items) && Array.isArray(s.students)) { state = Object.assign(freshState(), s); return true; }
+    if (s && Array.isArray(s.items) && Array.isArray(s.students)) {
+      // drafts saved with the old 3-level default move to the 4 levels
+      if (s.levels && s.levels.join("|") === Object.keys(OLD_LEVELS).join("|")){
+        s.levels = DEFAULT_LEVELS.slice();
+        s.items.forEach(it => { if (OLD_LEVELS[it.level]) it.level = OLD_LEVELS[it.level]; });
+      }
+      state = Object.assign(freshState(), s); return true;
+    }
   } catch(e){}
   return false;
 }
@@ -371,7 +380,10 @@ function toItems(qs){
 }
 /* thinking-level heuristic by instruction verbs */
 const LEVEL_RULES = [
-  { lvl:2, re:/(הסביר|הסבר|נמק|הוכיח|הוכח|מדוע|למה |האם |הראו ש|הראה ש|חקר|בדקו אם|בדוק אם|תנו דוגמה|תן דוגמה|הציעו|הצע |השוו|שערו|הכלילו|מצאו את כל|כמה דרכים|ייתכן|ייתכנו|עדי|דני טוען|טוען ש|צדק|שגיאה|טעות|בעיה|בעית)/ },
+  // 3 = open: several possible answers / student invents or investigates
+  { lvl:3, re:/(תנו דוגמה|תן דוגמה|הציעו|הצע |חקרו|חקור|שערו|הכלילו|מצאו את כל|כמה דרכים|בכמה דרכים|דרך נוספת|ייתכנו|המציאו|חברו שאלה|נסחו|בנו דוגמה)/ },
+  // 2 = process thinking: explain, justify, prove, judge a claim
+  { lvl:2, re:/(הסביר|הסבר|נמק|הוכיח|הוכח|מדוע|למה |האם |הראו ש|הראה ש|בדקו אם|בדוק אם|השוו|ייתכן|טוען|צדק|שגיאה|טעות|בעיה|בעית)/ },
   { lvl:0, re:/(סמנו|סמן |הקיפו|הקף |השלימו|השלם |כתבו את השם|מה השם|מה שם|הגדירו|הגדר |זהו |זהה |התאימו|התאם |העתיקו|נכון או לא|נכון\/לא|רשמו את|קראו|מהו ה|מהי ה|איזה מ|איזו מ|מי מ)/ },
   { lvl:1, re:/(חשב|פתר|מצא|שרטט|סדר|בנו|הציב|כנס|פשט|הרחיב|צייר|מדד|השוו בין|קבע)/ }
 ];
@@ -631,7 +643,12 @@ function renderChips(){
   h += `<span class="chip">תלמידים: <b>${state.students.length}</b></span>`;
   const byL = {};
   state.items.forEach(it => byL[it.level] = (byL[it.level] || 0) + (+it.max || 0));
-  for (const l of Object.keys(byL)) h += `<span class="chip">${esc(l)}: <b>${fmt(byL[l])}</b> נק׳ (${tot ? Math.round(byL[l] / tot * 100) : 0}%)</span>`;
+  const lvls = state.levels.concat(Object.keys(byL).filter(l => !state.levels.includes(l)));
+  for (const l of lvls){
+    const pct = tot ? Math.round((byL[l] || 0) / tot * 100) : 0, tg = LEVEL_TARGETS[l];
+    const off = tg != null && Math.abs(pct - tg) > 5;
+    h += `<span class="chip${off ? " bad" : ""}">${esc(l)}: <b>${fmt(byL[l] || 0)}</b> נק׳ (${pct}%${tg != null ? " · יעד " + tg + "%" : ""})</span>`;
+  }
   $("#chips").innerHTML = h;
 }
 function refreshRow(r){
@@ -747,7 +764,7 @@ function buildWorkbook(){
   const border = { top:thin, bottom:thin, left:thin, right:thin };
   const fill = c => ({ type:"pattern", pattern:"solid", fgColor:{ argb:c } });
   const YELLOW = fill("FFFFF2CC"), HEAD = fill("FFE7ECF5"), GREY = fill("FFF2F2F2");
-  const LVL = ["FFDDEBFF", "FFE2F4E2", "FFF9E1EE", "FFFFEBD2"];
+  const LVL = ["FFDDEBFF", "FFE2F4E2", "FFF9E1EE", "FFFFEBD2", "FFECE6FB"];
 
   const c0 = sid ? 3 : 2;                 // first item column (0-based)
   const cTot = c0 + its.length, cGrade = cTot + 1;
