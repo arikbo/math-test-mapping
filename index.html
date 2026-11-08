@@ -774,11 +774,65 @@ function applyParsed(res, source){
     + `✓ זוהו <b>${res.questions}</b> שאלות ו-<b>${res.items.length}</b> עמודות ניקוד${source ? " מתוך " + esc(source) : ""}. סך הניקוד: <b>${fmt(total)}</b>.`;
   if (Math.abs(total - 100) > 0.01) html += ` <br>⚠ הסכום אינו 100 – הציון יחושב באחוזים מתוך ${fmt(total)}.`;
   if (res.warnings.length) html += "<br>" + res.warnings.map(w => "⚠ " + esc(w)).join("<br>");
+  html += `<div id="fixBox">${fixSuggestions()}</div>`;
   setMsg("#testMsg", res.warnings.length || Math.abs(total - 100) > 0.01 ? "warn" : "ok", html);
   if (!state.title && source) state.title = source.replace(/\.[^.]+$/, "");
   render(); save();
   $("#step3").scrollIntoView({ behavior:"smooth", block:"start" });
 }
+/* ---------- when the points don't add up to 100: find where they went and offer fixes ---------- */
+let fixes = [];
+function halfSplit(total, n){            // n parts in half points, remainder to the last
+  const each = Math.floor(total / n * 2) / 2;
+  return Array.from({ length:n }, (_, i) => i === n - 1 ? Math.round((total - each * (n - 1)) * 2) / 2 : each);
+}
+function fixSuggestions(){
+  fixes = [];
+  const items = state.items, total = sumMax();
+  const nums = [...new Set(items.map(i => parseInt(i.q)).filter(n => !isNaN(n)))];
+  const maxQ = nums.length ? Math.max(...nums) : 0;
+  const gaps = []; for (let n = 1; n < maxQ; n++) if (!nums.includes(n)) gaps.push(n);
+  const nulls = items.filter(i => i.max == null);
+  const known = items.reduce((a, i) => a + (+i.max || 0), 0), missing = Math.round((100 - known) * 2) / 2;
+  if (Math.abs(total - 100) < 0.01 && !nulls.length)
+    return gaps.length ? `<div style="margin-top:8px">ℹ️ אין במבחן שאלה ${gaps.join(", ")} – אם זו לא טעות במספור, כדאי לבדוק.</div>` : "";
+  const parts = [];
+  if (gaps.length) parts.push(`לא מצאתי את שאלה ${gaps.join(", ")} (אולי היא תמונה בלבד, או שהמספור מדלג)`);
+  if (nulls.length) parts.push(`לא מצאתי ניקוד ל${nulls.map(i => i.sub ? `סעיף ${i.q}${i.sub}` : `שאלה ${i.q}`).join(", ")}`);
+  let h = `<div style="margin-top:10px;padding:10px;border-radius:10px;background:#fff;border:1px solid var(--line);color:var(--ink)"><b>🔎 בדקתי את המבחן:</b> ${missing > 0 ? `חסרות <b>${fmt(missing)}</b> נקודות עד 100` : `יש <b>${fmt(-missing)}</b> נקודות יותר מ-100`}.`;
+  if (parts.length) h += "<br>" + parts.join(". ") + ".";
+  const opt = (label, fn) => { fixes.push(fn); h += `<div style="margin-top:8px"><button class="btn" type="button" data-fix="${fixes.length - 1}">${label}</button></div>`; };
+  const lvl = state.levels[Math.min(1, state.levels.length - 1)];
+  const addQ = n => {   // new column for question n, in numeric order
+    const it = { id:nid(), q:String(n), sub:"", topic:"", level:lvl, max:null, desc:"" };
+    const at = state.items.findIndex(i => parseInt(i.q) > n);
+    state.items.splice(at < 0 ? state.items.length : at, 0, it); return it;
+  };
+  if (missing > 0 && (gaps.length || nulls.length)){
+    const n = gaps.length + nulls.length;
+    opt(`הוספת ${gaps.length ? "שאלה " + gaps.join(", ") : ""}${gaps.length && nulls.length ? " ו" : ""}${nulls.length ? "ניקוד למה שחסר לו ניקוד" : ""} – ${fmt(missing)} נקודות מחולקות שווה (${halfSplit(missing, n).map(fmt).join(" / ")})`, () => {
+      const targets = nulls.concat(gaps.map(addQ));
+      halfSplit(missing, targets.length).forEach((v, i) => targets[i].max = v);
+    });
+  }
+  if (missing > 0 && !gaps.length && !nulls.length) opt(`הוספת שאלה ${maxQ + 1} בסוף עם ${fmt(missing)} נקודות (אם יש שאלה אחרונה שלא זוהתה)`, () => { addQ(maxQ + 1).max = missing; nulls.forEach(i => i.max = 0); });
+  if (known > 0) opt(`התאמה יחסית של כל הניקוד ל-100 (כל סעיף ×${(100 / known).toFixed(2)})`, () => {
+    const live = state.items.filter(i => +i.max > 0);
+    live.forEach(i => i.max = Math.round(i.max * 100 / known * 2) / 2);
+    const diff = Math.round((100 - sumMax()) * 2) / 2;
+    if (diff){ const big = live.reduce((a, b) => (+b.max > +a.max ? b : a)); big.max = Math.round((+big.max + diff) * 2) / 2; }
+    nulls.forEach(i => { if (i.max == null) i.max = 0; });
+  });
+  h += `<div class="legend" style="margin-top:6px">אפשר גם לתקן ידנית בשורת "ניקוד מרבי" בטבלת המיפוי.</div></div>`;
+  return h;
+}
+$("#testMsg").addEventListener("click", e => {
+  const b = e.target.closest("[data-fix]"); if (!b) return;
+  fixes[+b.dataset.fix]();
+  render(); save();
+  const t = sumMax();
+  $("#fixBox").innerHTML = `<div style="margin-top:10px;padding:10px;border-radius:10px;background:var(--ok-soft);color:var(--ok)">✓ ההצעה הוחלה – סך הניקוד עכשיו <b>${fmt(t)}</b>. כדאי לעבור על שורת "ניקוד מרבי" בטבלת המיפוי.</div>` + fixSuggestions();
+});
 async function handleTestFile(file){
   if (!file) return;
   setMsg("#testMsg", "info", '<span class="spinner"></span> קורא את ' + esc(file.name) + "…");
