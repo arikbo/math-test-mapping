@@ -95,6 +95,13 @@ details summary{cursor:pointer;color:var(--brand);font-weight:600}
 .export-row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
 footer{color:var(--muted);text-align:center;font-size:13px;padding:10px 16px 30px}
 .hidden{display:none!important}
+.builder{margin-top:16px;border:1px solid var(--line);border-radius:12px;padding:14px;background:#fafbfc}
+.builder h3{margin:0 0 6px;font-size:18px}
+.brow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0;border-bottom:1px dashed var(--line)}
+.brow b{min-width:62px}
+.brow label{display:flex;align-items:center;gap:4px;color:var(--muted);font-size:15px}
+.brow select,.brow input{border:1px solid var(--line);border-radius:8px;padding:4px 6px;background:#fff;width:64px}
+.brow .bsum{color:var(--muted);font-size:14px}
 .spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--brand);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
 </style>
@@ -120,9 +127,8 @@ footer{color:var(--muted);text-align:center;font-size:13px;padding:10px 16px 30p
       </div>
       <input type="file" id="testFile" accept=".docx,.pdf,.txt,.md,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
       <div class="row" style="margin-top:12px">
-        <a class="btn" href="template.docx" download="תבנית מבחן למיפוי.docx">⬇ תבנית Word למבחן</a>
         <button class="btn" id="sampleBtn" type="button">טעינת מבחן לדוגמה</button>
-        <button class="btn" id="emptyBtn" type="button">מיפוי ריק (בניה ידנית)</button>
+        <button class="btn primary" id="emptyBtn" type="button">🧱 בניית מבחן חדש (שלד Word)</button>
       </div>
     </div>
     <div>
@@ -130,14 +136,27 @@ footer{color:var(--muted);text-align:center;font-size:13px;padding:10px 16px 30p
       <div class="row" style="margin-top:8px"><button class="btn primary" id="parseBtn" type="button">ניתוח הטקסט</button></div>
     </div>
   </div>
-  <p class="legend" style="margin-top:10px">טיפ: מבחן שנבנה ב<b>תבנית ה-Word</b> (עם טבלת הניקוד בסוף) ממופה בדיוק לפי הטבלה. כל מבחן אחר מזוהה אוטומטית – כדאי לעבור על הכותרות בטבלה.</p>
+  <div id="builder" class="builder hidden">
+    <h3>בניית מבחן חדש</h3>
+    <p class="legend" style="margin-top:0">קובעים כמה שאלות, כמה סעיפים בכל שאלה וכמה נקודות. מקבלים קובץ Word מוכן – עם כל הכותרות, הסעיפים, הניקוד וטבלת הניקוד – ורק מדביקים את השאלות עצמן (טקסט או תמונה). אותו מבנה הוא גם המיפוי.</p>
+    <div id="bRows"></div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="bAdd" type="button">＋ שאלה</button>
+      <span id="bTotal" class="chip"></span>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn primary" id="bWord" type="button">⬇ הורדת שלד המבחן ב-Word</button>
+      <button class="btn" id="bMap" type="button">רק מיפוי (בלי Word)</button>
+    </div>
+  </div>
+  <p class="legend" style="margin-top:10px">טיפ: מבחן שנבנה ב<b>שלד ה-Word</b> של האתר (או ב<a href="template.docx" download="תבנית מבחן למיפוי.docx">תבנית הכללית</a>) ממופה בדיוק לפי טבלת הניקוד שבסופו. כל מבחן אחר מזוהה אוטומטית – כדאי לעבור על הכותרות בטבלה.</p>
   <div class="msg" id="testMsg"></div>
 </section>
 
 <!-- STEP 2 -->
 <section class="step" id="step2">
   <h2><span class="num">2</span> רשימת תלמידים <span style="font-weight:400;color:var(--muted);font-size:16px">(לא חובה)</span></h2>
-  <p class="sub"><b>העלו קובץ Excel</b> של רשימת התלמידים (במערכת בית הספר: מוציאים את רשימת הקבוצה ובוחרים ייצוא ל-Excel). בלי קובץ – נוצרות 40 שורות ריקות.</p>
+  <p class="sub"><b>העלו קובץ Excel</b> של רשימת התלמידים (במערכת בית הספר: פותחים את רשימת הקבוצה ובוחרים <b>ייצוא אקסל</b>). בלי קובץ – נוצרות 40 שורות ריקות.</p>
   <div class="grid2">
     <div>
       <div class="drop" id="stuDrop" tabindex="0" role="button" aria-label="העלאת רשימת תלמידים">
@@ -188,6 +207,7 @@ footer{color:var(--muted);text-align:center;font-size:13px;padding:10px 16px 30p
   <div class="export-row">
     <button class="btn primary big" id="xlsxBtn" type="button">⬇ הורדת Excel</button>
     <button class="btn big" id="csvBtn" type="button">⬇ הורדת CSV</button>
+    <button class="btn big" id="wordBtn" type="button">⬇ שלד מבחן ב-Word</button>
     <button class="btn danger" id="resetBtn" type="button">התחלה מחדש</button>
   </div>
   <div class="msg" id="expMsg"></div>
@@ -966,7 +986,7 @@ function render(){
   h += "<tr>" + headLead("רמת חשיבה");
   its.forEach((it, i) => {
     const opts = state.levels.concat(state.levels.includes(it.level) || !it.level ? [] : [it.level]);
-    h += `<th class="lvl-${levelIdx(it.level)}"><select data-f="level" data-i="${i}" aria-label="רמת חשיבה">${opts.map(l => `<option${l === it.level ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></th>`;
+    h += `<th class="lvl-${levelIdx(it.level)}"><select data-f="level" data-i="${i}" aria-label="רמת חשיבה"><option value=""${it.level ? "" : " selected"}>— בחרו —</option>${opts.map(l => `<option${l === it.level ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></th>`;
   });
   h += "</tr>";
   h += "<tr>" + headLead("ניקוד מרבי");
@@ -1024,7 +1044,9 @@ function renderChips(){
   const byL = {};
   state.items.forEach(it => byL[it.level] = (byL[it.level] || 0) + (+it.max || 0));
   const lvls = state.levels.concat(Object.keys(byL).filter(l => !state.levels.includes(l)));
+  if (byL[""] != null) h += `<span class="chip">ללא רמת חשיבה: <b>${fmt(byL[""])}</b> נק׳</span>`;
   for (const l of lvls){
+    if (!l) continue;
     const pct = tot ? Math.round((byL[l] || 0) / tot * 100) : 0, tg = LEVEL_TARGETS[l];
     const off = tg != null && Math.abs(pct - tg) > 5;
     h += `<span class="chip${off ? " bad" : ""}">${esc(l)}: <b>${fmt(byL[l] || 0)}</b> נק׳ (${pct}%${tg != null ? " · יעד " + tg + "%" : ""})</span>`;
@@ -1375,12 +1397,130 @@ const SAMPLE = `מבחן מחצית א' במתמטיקה – כיתה ז'
 ב. הציבו a = −1, b = 2 וחשבו את ערך הביטוי 10 נק'
 בהצלחה!`;
 $("#sampleBtn").onclick = () => { $("#testText").value = SAMPLE; state.title = "מבחן לדוגמה"; applyParsed(parseTest(SAMPLE), ""); };
-$("#emptyBtn").onclick = () => {
-  state.items = [];
-  for (let i = 1; i <= 5; i++) state.items.push({ id:nid(), q:String(i), sub:"", topic:"", level:state.levels[Math.min(1, state.levels.length - 1)], max:20, desc:"" });
-  setMsg("#testMsg", "info", "נוצר מיפוי ריק עם 5 שאלות של 20 נקודות. ערכו את מספרי השאלות, הסעיפים והניקוד ישירות בכותרות הטבלה.");
-  render(); save();
+/* ---------- test skeleton builder ---------- */
+let bQs = [{subs:2, pts:10}, {subs:0, pts:20}, {subs:3, pts:10}, {subs:0, pts:15}, {subs:0, pts:15}];
+function renderBuilder(){
+  let h = "";
+  bQs.forEach((q, i) => {
+    const tot = q.subs ? q.subs * q.pts : q.pts;
+    h += `<div class="brow"><b>שאלה ${i + 1}</b>
+      <label>סעיפים <select data-b="subs" data-i="${i}">${[0,2,3,4,5,6,7,8].map(n => `<option value="${n}"${n === q.subs ? " selected" : ""}>${n ? HEB_LETTERS.slice(0, n).split("").join(",") : "בלי"}</option>`).join("")}</select></label>
+      <label>${q.subs ? "נקודות לכל סעיף" : "נקודות"} <input type="number" min="0" step="0.5" data-b="pts" data-i="${i}" value="${q.pts}"></label>
+      <span class="bsum">= ${fmt(tot)} נק׳</span>
+      <button class="mini" type="button" data-bdel="${i}" title="מחיקת שאלה">✕</button></div>`;
+  });
+  $("#bRows").innerHTML = h;
+  const total = bQs.reduce((a, q) => a + (q.subs ? q.subs * q.pts : q.pts), 0);
+  $("#bTotal").className = "chip " + (Math.abs(total - 100) < 0.01 ? "ok" : "bad");
+  $("#bTotal").innerHTML = `סה״כ: <b>${fmt(total)}</b>${Math.abs(total - 100) < 0.01 ? " ✓" : " (צריך 100)"}`;
+}
+$("#bRows").addEventListener("change", e => {
+  const el = e.target; if (!el.dataset.b) return;
+  bQs[+el.dataset.i][el.dataset.b] = +el.value || 0; renderBuilder();
+});
+$("#bRows").addEventListener("click", e => { const b = e.target.closest("[data-bdel]"); if (b){ bQs.splice(+b.dataset.bdel, 1); renderBuilder(); } });
+$("#bAdd").onclick = () => { bQs.push({ subs:0, pts:10 }); renderBuilder(); };
+function builderToItems(){
+  const lvl = "", items = [];          // thinking level is left for the teacher to choose
+  bQs.forEach((q, i) => {
+    if (!q.subs) items.push({ id:nid(), q:String(i + 1), sub:"", topic:"", level:lvl, max:q.pts, desc:"" });
+    else for (let k = 0; k < q.subs; k++) items.push({ id:nid(), q:String(i + 1), sub:HEB_LETTERS[k], topic:"", level:lvl, max:q.pts, desc:"" });
+  });
+  state.items = items; render(); save();
+}
+$("#emptyBtn").onclick = () => { $("#builder").classList.toggle("hidden"); renderBuilder(); };
+$("#bMap").onclick = () => {
+  builderToItems();
+  setMsg("#testMsg", "ok", "✓ נבנה מיפוי לפי המבנה. אפשר לקבוע רמת חשיבה לכל סעיף בטבלה, ולהוריד את שלד ה-Word בשלב 4.");
+  $("#step3").scrollIntoView({ behavior:"smooth", block:"start" });
 };
+$("#bWord").onclick = async () => {
+  builderToItems();
+  await exportSkeleton();
+  setMsg("#testMsg", "ok", "✓ שלד המבחן הורד, והמיפוי נבנה לפי אותו מבנה (בשלב 3). אחרי שתמלאו את המבחן אין צורך להעלות אותו – המיפוי כבר מוכן. אם תשנו ניקוד במבחן, עדכנו גם כאן.");
+};
+
+/* ---------- Word skeleton from the current mapping (built on template.docx: logo, בס"ד, page setup) ---------- */
+async function exportSkeleton(){
+  if (!checkBeforeExport()) return;
+  try {
+    await loadLib("jszip");
+    const res = await fetch("template.docx");
+    if (!res.ok) throw new Error("לא הצלחתי לטעון את התבנית");
+    const zip = await JSZip.loadAsync(await res.arrayBuffer());
+    const doc = await zip.file("word/document.xml").async("string");
+    const start = doc.indexOf("<w:body>") + 8, sect = doc.indexOf("<w:sectPr");
+    const out = doc.slice(0, start) + skeletonBody() + doc.slice(sect);
+    zip.file("word/document.xml", out);
+    const blob = await zip.generateAsync({ type:"blob", mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+    download(blob, `${fileBase()}.docx`);
+    setMsg("#expMsg", "ok", "✓ שלד המבחן ב-Word הורד.");
+  } catch(e){ console.error(e); setMsg("#expMsg", "bad", "שגיאה ביצירת קובץ ה-Word: " + esc(e.message || e)); }
+}
+function skeletonBody(){
+  const x = t => esc(t);
+  const run = (t, size = 24, o = {}) => `<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>${o.b ? "<w:b/><w:bCs/>" : ""}${o.i ? "<w:i/><w:iCs/>" : ""}${o.u ? '<w:u w:val="single"/>' : ""}${o.color ? `<w:color w:val="${o.color}"/>` : ""}<w:sz w:val="${size}"/><w:szCs w:val="${size}"/><w:rtl/></w:rPr><w:t xml:space="preserve">${x(t)}</w:t></w:r>`;
+  // bidi paragraph: jc "left" = visual right (start), "right" = visual left (end)
+  const para = (runs = "", jc = "left", o = {}) => `<w:p><w:pPr>${o.keep ? "<w:keepNext/>" : ""}${o.shade ? `<w:shd w:val="clear" w:color="auto" w:fill="${o.shade}"/>` : ""}<w:bidi/><w:spacing w:before="${o.before || 0}" w:after="${o.after ?? 60}"/><w:jc w:val="${jc}"/></w:pPr>${runs}</w:p>`;
+  const noB = '<w:tcBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/></w:tcBorders>';
+  const cell = (content, w, o = {}) => `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${o.span > 1 ? `<w:gridSpan w:val="${o.span}"/>` : ""}${o.nob ? noB : ""}${o.shade ? `<w:shd w:val="clear" w:color="auto" w:fill="${o.shade}"/>` : ""}<w:vAlign w:val="center"/></w:tcPr>${content}</w:tc>`;
+  const row = (cells, h) => `<w:tr><w:trPr><w:cantSplit/>${h ? `<w:trHeight w:val="${h}" w:hRule="atLeast"/>` : ""}</w:trPr>${cells.join("")}</w:tr>`;
+  const table = (rows, widths, borders = true) => {
+    const sides = ["top","left","bottom","right","insideH","insideV"];
+    const b = borders ? sides.map(sd => `<w:${sd} w:val="single" w:sz="6" w:space="0" w:color="000000"/>`).join("") : sides.map(sd => `<w:${sd} w:val="nil"/>`).join("");
+    return `<w:tbl><w:tblPr><w:bidiVisual/><w:tblW w:w="${widths.reduce((a, c) => a + c, 0)}" w:type="dxa"/><w:jc w:val="center"/><w:tblBorders>${b}</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="80" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${widths.map(w => `<w:gridCol w:w="${w}"/>`).join("")}</w:tblGrid>${rows.join("")}</w:tbl>`;
+  };
+  const GRAY = "808080", HEAD = "E7ECF5";
+  const two = (r, l, wr, wl, sizeR = 24) => table([row([cell(para(r, "left", { after:0, keep:true }), wr, { nob:true }), cell(para(l, "right", { after:0, keep:true }), wl, { nob:true })])], [wr, wl], false);
+  const blank = n => Array.from({ length:n }, () => para("", "left", { after:0 })).join("");
+  let b = "";
+  b += para(run(state.title ? state.title : "מבחן ___ במתמטיקה – כיתה ___ – תשפ״ז", 32, { b:true }), "center", { before:120, after:200 });
+  b += table([row([
+    cell(para(run("שם: ____________________"), "left", { after:0 }), 3000),
+    cell(para(run("כיתה: ________"), "left", { after:0 }), 2000),
+    cell(para(run("שם המורה למתמטיקה: ____________"), "left", { after:0 }), 3500)], 520)], [3000, 2000, 3500]);
+  b += para(run("הוראות: ", 24, { b:true }) + run("משך המבחן ___ דקות. יש לענות על כל השאלות ולהראות את דרך הפתרון."), "left", { before:200, after:240 });
+  // questions, in mapping order
+  const qs = [];
+  for (const it of state.items){ let q = qs.find(z => z.q === String(it.q)); if (!q){ q = { q:String(it.q), items:[] }; qs.push(q); } q.items.push(it); }
+  for (const q of qs){
+    const pts = q.items.reduce((a, it) => a + (+it.max || 0), 0);
+    b += two(run(`שאלה ${q.q}`, 26, { b:true, u:true }), run(`(${fmt(pts)} נקודות)`, 26, { b:true }), 6300, 2200);
+    const subs = q.items.filter(it => it.sub);
+    b += para(run(subs.length ? "[כאן מדביקים / כותבים את גוף השאלה – נתונים, שרטוט. אפשר למחוק שורה זו]" : "[כאן מדביקים / כותבים את השאלה – טקסט או תמונה]", 24, { i:true, color:GRAY }), "left", { before:60, after:120 });
+    if (!subs.length) b += blank(7);
+    for (const it of subs){
+      b += two(run(`${it.sub}. `, 24, { b:true }) + run("[כאן מדביקים / כותבים את הסעיף]", 24, { i:true, color:GRAY }), run(`${fmt(it.max)} נק׳`, 24, { b:true }), 7300, 1200);
+      b += blank(5);
+    }
+  }
+  // score table, up to 10 columns per table
+  b += para(run("בהצלחה!", 28, { b:true }), "center", { before:240, after:60 });
+  b += para(run("למילוי על ידי המורה בלבד!", 24, { b:true }), "center", { after:160, keep:true });
+  const PER = 10, LABEL = 1500;
+  for (let s0 = 0; s0 < state.items.length; s0 += PER){
+    const chunk = state.items.slice(s0, s0 + PER);
+    const cw = Math.floor((8500 - LABEL) / Math.max(chunk.length, 5));
+    const widths = [LABEL].concat(chunk.map(() => cw));
+    const lab = t => cell(para(run(t, 22, { b:true }), "left", { after:0 }), LABEL, { shade:HEAD });
+    const val = (t, o = {}) => para(run(String(t ?? ""), o.size || 22, { b:o.b }), "center", { after:0 });
+    const qCells = [lab("שאלה")];
+    for (let i = 0; i < chunk.length;){
+      let j = i; while (j + 1 < chunk.length && String(chunk[j + 1].q) === String(chunk[i].q)) j++;
+      qCells.push(cell(val(chunk[i].q, { b:true }), cw * (j - i + 1), { span:j - i + 1, shade:HEAD })); i = j + 1;
+    }
+    b += table([
+      row(qCells, 400),
+      row([lab("סעיף")].concat(chunk.map(it => cell(val(it.sub || "—"), cw))), 400),
+      row([lab("ניקוד מרבי")].concat(chunk.map(it => cell(val(fmt(it.max), { b:true }), cw))), 400),
+      row([lab("רמת חשיבה")].concat(chunk.map(it => cell(val(it.level || "", { size:16 }), cw))), 520),
+      row([lab("ניקוד")].concat(chunk.map(() => cell(val(""), cw))), 800)
+    ], widths);
+    b += para("", "left", { after:120 });
+  }
+  b += para(run("סה״כ: ________ / " + fmt(sumMax()), 26, { b:true }), "left", { before:120, after:0 });
+  return b;
+}
 $("#stuPasteBtn").onclick = () => {
   const t = $("#stuText").value;
   if (!t.trim()){ setMsg("#stuMsg", "warn", "הדביקו קודם שמות – שם בכל שורה."); return; }
@@ -1405,6 +1545,7 @@ $("#levelsInput").onchange = e => {
 };
 $("#xlsxBtn").onclick = exportXlsx;
 $("#csvBtn").onclick = exportCsv;
+$("#wordBtn").onclick = exportSkeleton;
 $("#resetBtn").onclick = () => {
   if (!confirm("למחוק את כל המיפוי והתלמידים ולהתחיל מחדש?")) return;
   state = freshState(); $("#testText").value = ""; $("#stuText").value = "";
