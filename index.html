@@ -285,7 +285,7 @@ function normalize(t){
     .replace(/[ \t]+/g, " ");
 }
 // points marker: "(10 נקודות)", "10 נק'", "נק' 10", "[5 נק]"
-const PTS_RE = /(\d+(?:\.\d+)?)\s*(?:נקודות|נקודה|נק'?|נק\.)(?![א-ת])/g;
+const PTS_RE = /(\d+(?:\.\d+)?)\s*(?:נק'|נק\.|נק(?![א-ת])|(?:נקודות|נקודה)(?=\s*[)\]]|\s*$))/g;
 const PTS_RE2 = /(?:נקודות|נק'|נק\.?)\s*:?\s*(\d+(?:\.\d+)?)/g;
 function findPoints(line){
   let m, last = null;
@@ -311,6 +311,16 @@ const STRONG_SUB_RE = /^\(?([א-ת])\s*[.)]\s*(.*)$/;      // "ב. ..." / "ב) .
 const BARE_LETTER_RE = /^([א-ת])\s*['.]?$/;               // a lone "ב" (e.g. a table cell)
 const FINAL_TO_REG = { "ך":"כ", "ם":"מ", "ן":"נ", "ף":"פ", "ץ":"צ" };
 
+/* PDFs sometimes give right-to-left text in a mixed-up order: ".1" for "1.", "2( נק')" for "(2 נק')",
+   "4( .3 נק')" for "3. (4 נק')", "17x − 10 = .א" for "א. 17x − 10 =", "(3 נק') ג. …" with the points first */
+function unreverse(l){
+  l = l.replace(/(\d+(?:\.\d+)?)\s*\(\s*\.(\d{1,2})\s*(נקודות|נק'?)\s*\)/, "$2. ($1 נק')");
+  l = l.replace(/(\d+(?:\.\d+)?)\s*\(([^()]*?)(נקודות|נק'?)\s*\)/g, (m, n, mid, w) => /^\s*\d+(\.\d+)?\s*$/.test(mid) ? m : `${mid} (${n} נק')`);
+  l = l.replace(/\s+/g, " ").trim().replace(/^\.(\d{1,2})(?!\d)\s*/, "$1. ");
+  l = l.replace(/^\(\s*(\d+(?:\.\d+)?)\s*(נקודות|נק'?)\s*\)\s+(\S.*)$/, "$3 ($1 נק')");
+  l = l.replace(/^(.*\S)\s+\.([א-ת])$/, "$2. $1");
+  return l.replace(/\s+/g, " ").trim();
+}
 function parseTest(raw){
   let lines = normalize(raw).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   // "10" + "נק'" split over two lines/cells → "10 נק'"
@@ -319,20 +329,26 @@ function parseTest(raw){
     if (/^(נק'?|נקודות|נק\.)$/.test(l) && merged.length && /^\d+(\.\d+)?$/.test(merged[merged.length - 1])) merged[merged.length - 1] += " נק'";
     else merged.push(l);
   }
-  lines = merged;
+  lines = merged.map(unreverse);
   // how are questions numbered in this file?
   const wordMode = lines.some(l => Q_RE.test(l) || Q_RE_HEB.test(l));
-  const bareMode = !wordMode && lines.some(l => /^1\s*[.)]?$/.test(l)) && lines.some(l => /^2\s*[.)]?$/.test(l));
+  // numbers alone on a line ("1", "2" – e.g. in a circle) vs "1. text": pick the style that explains a longer 1, 2, 3… run
+  // (a page number or a fraction alone on a line must not switch the whole test to "numbers alone")
+  const seqLen = test => { let n = 1; for (const l of lines){ const m = test(l); if (m && +m[1] === n) n++; } return n - 1; };
+  const bareRun = seqLen(l => l.match(BARE_NUM_RE)), anyRun = seqLen(l => l.match(NUM_Q_RE) || l.match(BARE_NUM_RE));
+  const bareMode = !wordMode && bareRun >= 2 && bareRun >= anyRun;
   const headerOf = (line, expected) => {
     if (wordMode){
+      if (/^\**\s*(שאלת|שאלה) בונוס/.test(line)) return { num: "בונוס", rest: line.replace(/^\**\s*(שאלת|שאלה) בונוס\s*:?\s*/, "") };
       const m = line.match(Q_RE) || line.match(Q_RE_HEB);
       if (!m) return null;
       return { num: /^\d+$/.test(m[1]) ? parseInt(m[1]) : HEB_ORD[m[1]], rest: m[2] || "" };
     }
+    if (/^\**\s*(שאלת|שאלה) בונוס/.test(line)) return { num: "בונוס", rest: line.replace(/^\**\s*(שאלת|שאלה) בונוס\s*:?\s*/, "") };
     // number-only headers must come in order (1, 2, 3…) so numbers inside exercises are not mistaken for questions
-    const m = bareMode ? line.match(BARE_NUM_RE) : line.match(NUM_Q_RE);
+    const m = bareMode ? line.match(BARE_NUM_RE) : (line.match(NUM_Q_RE) || line.match(BARE_NUM_RE));
     if (!m || +m[1] !== expected) return null;
-    return { num: +m[1], rest: bareMode ? "" : m[2] };
+    return { num: +m[1], rest: bareMode ? "" : (m[2] || "") };
   };
 
   const qs = [];
@@ -346,22 +362,32 @@ function parseTest(raw){
     sub = { letter: HEB_LETTERS[idx] || letter, points: findPoints(line), text: [stripPoints(rest || "")] };
     q.subs.push(sub);
   };
+  // a sub-item line may hold the next ones too: "א.   ב." or "א. חשבו. ב. חשבו. ג. הוסיפו…"
+  const newSubs = (letter, line, rest) => {
+    newSub(letter, line, rest);
+    let mm;
+    while ((mm = rest.match(/^(.*?)(?:^|\s)([א-ת])\s?\.(?:\s+|$)(.*)$/)) && HEB_LETTERS.indexOf(mm[2]) === HEB_LETTERS.indexOf(sub.letter) + 1){
+      sub.text = [stripPoints(mm[1])];
+      if (findPoints(mm[1]) == null) sub.points = null;
+      newSub(mm[2], mm[3], mm[3]); rest = mm[3];
+    }
+  };
   for (const line of lines){
     if (STOP_RE.test(line) && qs.length) break;
     const h = headerOf(line, qs.length ? (+q.num + 1) : 1);
     if (h){
       q = { num: String(h.num), points: findPoints(line), text: [stripPoints(h.rest)], subs: [], pending: null };
-      qs.push(q); sub = null; continue;
+      qs.push(q); sub = null;
+      const hs = h.rest.match(STRONG_SUB_RE);
+      if (hs && hs[1] === "א" && hs[2]){ q.text = [""]; q.points = null; newSubs(hs[1], h.rest, hs[2]); }
+      continue;
     }
     if (!q) continue;
     let m = line.match(SUB_RE2);
     if (m){ newSub(m[1], line, m[2]); continue; }
     m = line.match(STRONG_SUB_RE);
     if (m && (m[2] || "").length !== 0 || (m = line.match(BARE_LETTER_RE))){
-      // several sub-items laid out side by side on one line: "א.   ב."
-      let rest = m[2] || "", mm;
-      newSub(m[1], line, rest);
-      while ((mm = rest.match(/^([א-ת])\s*\.\s*(.*)$/))){ rest = mm[2]; sub.text = [""]; newSub(mm[1], "", rest); }
+      newSubs(m[1], line, m[2] || "");
       continue;
     }
     m = line.match(SUB_RE);
@@ -620,11 +646,16 @@ function pdfRowSegments(items){
     if (last && it.x0 - last.x1 < tol){ last.parts.push(it.s.trim()); last.x1 = Math.max(last.x1, it.x1); }
     else segs.push({ x0: it.x0, x1: it.x1, h: it.h, parts: [it.s.trim()] });
   }
-  const words = segs.map(g => ({ x: (g.x0 + g.x1) / 2, s: logicalOrder(g.parts).join("") }));
-  // whole row in reading order
-  const order = logicalOrder(words.map((_, i) => String(i)).map(i => words[+i].s));
-  const used = new Set(), res = [];
-  for (const s of order){ const k = words.findIndex((w, i) => !used.has(i) && w.s === s); used.add(k); res.push(words[k]); }
+  const words = segs.map(g => ({ x: (g.x0 + g.x1) / 2, x0: g.x0, x1: g.x1, h: g.h, s: logicalOrder(g.parts).join("") }));
+  // whole row in reading order: right → left, but a run of nearby non-Hebrew words (a formula) stays left → right.
+  // Words far apart (e.g. "שתוצאתו 20 …… 8 נק'") are separate runs.
+  const r = words.slice().reverse(), res = [];
+  for (let i = 0; i < r.length;){
+    if (isHeb(r[i].s)){ res.push(r[i++]); continue; }
+    let j = i + 1;
+    while (j < r.length && !isHeb(r[j].s) && r[j - 1].x0 - r[j].x1 < 2.5 * Math.max(r[j].h, 6)) j++;
+    res.push(...r.slice(i, j).reverse()); i = j;
+  }
   return res;
 }
 /* Reads a .docx directly, so Word's automatic numbering (א. ב. ג. / 1. 2. 3.) is kept as text,
@@ -772,6 +803,8 @@ function applyParsed(res, source){
   const total = sumMax();
   let html = (res.fromTable ? "✓ נמצאה טבלת ניקוד במבחן – המיפוי נבנה ממנה. " : "")
     + `✓ זוהו <b>${res.questions}</b> שאלות ו-<b>${res.items.length}</b> עמודות ניקוד${source ? " מתוך " + esc(source) : ""}. סך הניקוד: <b>${fmt(total)}</b>.`;
+  const bonus = state.items.filter(isBonus).reduce((a, i) => a + (+i.max || 0), 0);
+  if (bonus) html += ` (ועוד <b>${fmt(bonus)}</b> נקודות בונוס – לא נספרות ב-100, והציון לא עולה על 100)`;
   if (Math.abs(total - 100) > 0.01) html += ` <br>⚠ הסכום אינו 100 – הציון יחושב באחוזים מתוך ${fmt(total)}.`;
   if (res.warnings.length) html += "<br>" + res.warnings.map(w => "⚠ " + esc(w)).join("<br>");
   html += `<div id="fixBox">${fixSuggestions()}</div>`;
@@ -793,7 +826,7 @@ function fixSuggestions(){
   const maxQ = nums.length ? Math.max(...nums) : 0;
   const gaps = []; for (let n = 1; n < maxQ; n++) if (!nums.includes(n)) gaps.push(n);
   const nulls = items.filter(i => i.max == null);
-  const known = items.reduce((a, i) => a + (+i.max || 0), 0), missing = Math.round((100 - known) * 2) / 2;
+  const known = items.reduce((a, i) => a + (isBonus(i) ? 0 : (+i.max || 0)), 0), missing = Math.round((100 - known) * 2) / 2;
   if (Math.abs(total - 100) < 0.01 && !nulls.length)
     return gaps.length ? `<div style="margin-top:8px">ℹ️ אין במבחן שאלה ${gaps.join(", ")} – אם זו לא טעות במספור, כדאי לבדוק.</div>` : "";
   const parts = [];
@@ -1022,7 +1055,8 @@ function defaultStudents(){
 /* =========================================================
    TABLE
    ========================================================= */
-const sumMax = () => state.items.reduce((a, it) => a + (+it.max || 0), 0);
+const isBonus = it => /בונוס/.test(String(it.q));
+const sumMax = () => state.items.reduce((a, it) => a + (isBonus(it) ? 0 : (+it.max || 0)), 0);
 const fmt = n => (n == null || n === "" || isNaN(n)) ? "" : (Math.round(n * 10) / 10).toString();
 function studentTotal(s){
   let any = false, t = 0;
@@ -1031,7 +1065,7 @@ function studentTotal(s){
 }
 function studentGrade(s){
   const t = studentTotal(s), m = sumMax();
-  return t == null || !m ? null : Math.round(t / m * 100);
+  return t == null || !m ? null : Math.min(100, Math.round(t / m * 100));
 }
 function levelIdx(l){ return state.levels.indexOf(l); }
 
@@ -1305,7 +1339,8 @@ function buildWorkbook(){
     for (let rr = R["שאלה"]; rr < hdrRow; rr++) ws.getCell(rr, ci + 1).border = border;
   });
   const tm = ws.getCell(hdrRow, cTot + 1);
-  tm.value = { formula:`SUM(${firstItem}${hdrRow}:${lastItem}${hdrRow})`, result: sumMax() };
+  const bonusCols = its.map((it, j) => isBonus(it) ? `-${L(c0 + j)}${hdrRow}` : "").join("");
+  tm.value = { formula:`SUM(${firstItem}${hdrRow}:${lastItem}${hdrRow})${bonusCols}`, result: sumMax() };
   tm.font = bold; tm.fill = HEAD; tm.border = border; tm.alignment = { horizontal:"center" };
   const gm = ws.getCell(hdrRow, cGrade + 1); gm.value = 100; gm.font = bold; gm.fill = HEAD; gm.border = border; gm.alignment = { horizontal:"center" };
   // the lead columns' captions for student rows go in the row just above the students? use "ניקוד מרבי" row label is merged; add a caption row
@@ -1320,7 +1355,7 @@ function buildWorkbook(){
     its.forEach((it, j) => { const v = s.scores[it.id]; set(c0 + j + 1, v == null || v === "" ? null : +v, font, YELLOW); });
     const t = studentTotal(s), g = studentGrade(s);
     set(cTot + 1, { formula:`IF(COUNT(${firstItem}${row}:${lastItem}${row})=0,"",SUM(${firstItem}${row}:${lastItem}${row}))`, result: t == null ? "" : t }, bold, GREY);
-    set(cGrade + 1, { formula:`IF(${L(cTot)}${row}="","",ROUND(${L(cTot)}${row}/$${L(cTot)}$${hdrRow}*100,0))`, result: g == null ? "" : g }, bold, GREY);
+    set(cGrade + 1, { formula:`IF(${L(cTot)}${row}="","",MIN(100,ROUND(${L(cTot)}${row}/$${L(cTot)}$${hdrRow}*100,0)))`, result: g == null ? "" : g }, bold, GREY);
   });
   // validation on score cells
   if (studs.length) its.forEach((it, j) => {
