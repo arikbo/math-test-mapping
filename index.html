@@ -779,7 +779,12 @@ async function handleStudentFile(file){
     if (name.endsWith(".txt")){
       list = extractStudents(decodeText(await file.arrayBuffer()).split(/\r?\n/).map(l => l.split(/\t|,|;/)));
     } else if (name.endsWith(".pdf")){
-      list = extractStudents(pdfTable(await pdfRows(await file.arrayBuffer())));
+      // a school-system report can hold several study groups – one per page / section
+      const groups = splitPdfGroups(await pdfRows(await file.arrayBuffer()))
+        .map(g => ({ title: g.title, expected: g.expected, list: extractStudents(pdfTable(g.rows)) }))
+        .filter(g => g.list.length);
+      if (groups.length > 1) return chooseGroup(groups, file.name);
+      list = groups.length ? groups[0].list : [];
     } else if (name.endsWith(".docx")){
       list = extractStudents((await docxToText(await file.arrayBuffer())).split(/\r?\n/).map(l => l.split(/\t|,|;/)));
     } else {
@@ -787,16 +792,54 @@ async function handleStudentFile(file){
       let wb;
       if (name.endsWith(".csv")) wb = XLSX.read(decodeText(await file.arrayBuffer()), { type:"string" });
       else wb = XLSX.read(await file.arrayBuffer(), { type:"array" });
-      // use the sheet that yields the most names
-      list = [];
-      for (const sn of wb.SheetNames){
-        const l = extractStudents(XLSX.utils.sheet_to_json(wb.Sheets[sn], { header:1, raw:false, defval:"" }));
-        if (l.length > list.length) list = l;
-      }
+      // every sheet with names is a group; several → let the teacher choose
+      const groups = wb.SheetNames.map(sn => ({ title: sn, list: extractStudents(XLSX.utils.sheet_to_json(wb.Sheets[sn], { header:1, raw:false, defval:"" })) }))
+        .filter(g => g.list.length >= 3);
+      if (groups.length > 1) return chooseGroup(groups, file.name);
+      list = groups.length ? groups[0].list : [];
     }
     applyStudents(list, file.name);
   } catch(e){ setMsg("#stuMsg", "bad", esc(e.message || e)); }
 }
+/* split a PDF report into study groups: a new group starts at a title like "רשימת תלמידים לקבוצת הלימוד: …" */
+const GROUP_TITLE_RE = /(רשימת תלמידים|תלמידי (ה)?קבוצה|^קבוצת (ה)?לימוד|^קבוצה:)/;
+function splitPdfGroups(rows){
+  const txt = r => r.map(c => c.s).join(" ");
+  const groups = [];
+  let cur = null;
+  for (const r of rows){
+    const t = txt(r);
+    if (GROUP_TITLE_RE.test(t) && !/^מספר התלמידים/.test(t)){
+      cur = { title: t.replace(/^.*?(קבוצת (ה)?לימוד|קבוצה)\s*:?\s*/, "").replace(/[\[\]]/g, " ").replace(/\d{6,}/g, "").replace(/\s+/g, " ").trim() || t, rows: [], expected: null };
+      groups.push(cur); continue;
+    }
+    if (!cur){ cur = { title: "", rows: [], expected: null }; groups.push(cur); }
+    const m = t.match(/מספר התלמידים[^:\d]*:?\s*(\d+)/);
+    if (m){ cur.expected = +m[1]; continue; }
+    cur.rows.push(r);
+  }
+  return groups;
+}
+let pendingGroups = null, pendingSource = "";
+function chooseGroup(groups, source){
+  pendingGroups = groups; pendingSource = source;
+  const total = groups.reduce((a, g) => a + g.list.length, 0);
+  let h = `בקובץ יש <b>${groups.length}</b> קבוצות (${total} תלמידים בסך הכול). איזו קבוצה לטעון?<div class="row" style="margin-top:10px">`;
+  groups.forEach((g, i) => {
+    const warn = g.expected != null && g.expected !== g.list.length ? ` – בקובץ כתוב ${g.expected}` : "";
+    h += `<button class="btn" type="button" data-group="${i}">${esc(g.title || "קבוצה " + (i + 1))} <span style="color:var(--muted)">(${g.list.length}${warn})</span></button>`;
+  });
+  h += `<button class="btn" type="button" data-group="all">כל הקבוצות יחד (${total})</button></div>`;
+  setMsg("#stuMsg", "info", h);
+}
+$("#stuMsg").addEventListener("click", e => {
+  const b = e.target.closest("[data-group]"); if (!b || !pendingGroups) return;
+  const g = b.dataset.group;
+  const list = g === "all" ? pendingGroups.flatMap(x => x.list) : pendingGroups[+g].list;
+  const title = g === "all" ? "" : pendingGroups[+g].title;
+  pendingGroups = null;
+  applyStudents(list.map(s => Object.assign({}, s, { id: nid(), scores: {} })), pendingSource + (title ? " – " + title : ""));
+});
 /* PDF rows → table: if a header row (with "שם") exists, put each chunk under the nearest header column */
 function pdfTable(rows){
   const hi = rows.slice(0, 15).findIndex(r => r.some(c => /שם/.test(c.s) && c.s.length < 30));
@@ -804,8 +847,14 @@ function pdfTable(rows){
     // no header: one name per line, numbers kept as separate cells
     return rows.map(r => { const name = r.filter(c => !/^\d+[.)]?$/.test(c.s)).map(c => c.s).join(" "); return [name].concat(r.filter(c => /^\d{5,9}$/.test(c.s)).map(c => c.s)); });
   }
-  const cols = rows[hi].map(c => c.x);
-  const table = [rows[hi].map(c => c.s)];
+  const head = [];
+  for (const c of rows[hi]){
+    const last = head[head.length - 1];
+    if (last && /^שם$/.test(last.s) && /^(פרטי|משפחה|התלמיד|מלא|תלמיד)/.test(c.s)) { last.s += " " + c.s; last.x = (last.x + c.x) / 2; }
+    else head.push({ x: c.x, s: c.s });
+  }
+  const cols = head.map(c => c.x);
+  const table = [head.map(c => c.s)];
   for (const r of rows.slice(hi + 1)){
     const cells = cols.map(() => []);
     for (const c of r){
@@ -855,7 +904,9 @@ function extractStudents(rows){
   for (const r of body){
     let name = full >= 0 ? r[full] : [r[first] || "", r[last] || ""].join(" ").trim();
     if (full >= 0 && (first >= 0 || last >= 0) && !name) name = [r[first] || "", r[last] || ""].join(" ").trim();
-    name = (name || "").replace(/\s+/g, " ").trim().replace(/^\d+\s*[.)\-–]\s*/, "");
+    name = (name || "").replace(/\s+/g, " ").trim().replace(/^\d+\s*[.)\-–]\s*/, "")
+      .replace(/(^|\s)\d+(?=\s|$)/g, " ").replace(/\s+/g, " ").trim();     // row numbers glued to a name column
+    if ([...name].length < 2 || /(עמוד \d|מתוך \d|מספר התלמידים|הופק|מידע מוגן|חוק הגנת|שנת הלימודים)/.test(name)) continue;
     if (/^(רשימת|רשימה|כיתה|שכבה|מחנכ|תאריך|שנת|בית ספר|שם התלמיד|שם$)/.test(name)) continue;
     if (!name || /^(סה"?כ|ממוצע|total)/i.test(name)) continue;
     if (/^\d+$/.test(name)) continue;
