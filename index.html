@@ -525,9 +525,13 @@ function scoreTableResult(auto){
   const warnings = [];
   const missing = items.filter(it => it.max == null);
   if (missing.length) warnings.push("בטבלת הניקוד חסר ניקוד מרבי ל: " + missing.map(it => it.q + it.sub).join(", "));
-  const autoTotal = auto.items.reduce((x, it) => x + (+it.max || 0), 0), tblTotal = items.reduce((x, it) => x + (+it.max || 0), 0);
-  if (Math.abs(autoTotal - 100) < 0.01 && Math.abs(autoTotal - tblTotal) > 0.01)
-    warnings.push(`בגוף המבחן זוהה ניקוד אחר (${fmt(autoTotal)}). המיפוי נבנה לפי טבלת הניקוד – כדאי לוודא שהיא מעודכנת.`);
+  const autoTotal = auto.items.reduce((x, it) => x + (+it.max || 0), 0);
+  const sig = arr => arr.map(it => `${it.q}${it.sub || ""}:${+it.max || 0}`).join("|");
+  // the questions in the body are clear (all points found, total 100) but differ from the table →
+  // the teacher changed the test and not the table: map by the questions
+  if (!auto.warnings.length && Math.abs(autoTotal - 100) < 0.01 && sig(auto.items) !== sig(items))
+    return Object.assign({}, auto, { tableOutdated: true,
+      warnings: auto.warnings.concat(["טבלת הניקוד בסוף המבחן לא תואמת לשאלות (כנראה נוספה או השתנתה שאלה). המיפוי נבנה לפי השאלות עצמן."]) });
   return { items, warnings, questions: new Set(items.map(i => i.q)).size, fromTable: true };
 }
 
@@ -778,11 +782,18 @@ async function handleTestFile(file){
   if (!file) return;
   setMsg("#testMsg", "info", '<span class="spinner"></span> קורא את ' + esc(file.name) + "…");
   try {
+    lastDocx = /\.docx$/i.test(file.name) ? { buf: await file.arrayBuffer(), name: file.name } : null;
     const text = await fileToText(file);
     $("#testText").value = text.trim();
     const auto = parseTest(text);
     const fromTable = scoreTableResult(auto);
-    applyParsed(fromTable || auto, file.name);
+    const res = fromTable || auto;
+    applyParsed(res, file.name);
+    // Word file whose score table is missing or out of date → offer the same file with an updated table
+    if (lastDocx && (!fromTable || res.tableOutdated) && res.items.length){
+      $("#testMsg").insertAdjacentHTML("beforeend", `<div class="row" style="margin-top:10px"><button class="btn primary" type="button" id="fixTableBtn">⬇ הורדת המבחן עם טבלת ניקוד ${fromTable ? "מעודכנת" : "בסוף"}</button></div>`);
+      $("#fixTableBtn").onclick = exportWithScoreTable;
+    }
   } catch(e){ setMsg("#testMsg", "bad", esc(e.message || e)); }
 }
 
@@ -1440,6 +1451,45 @@ $("#bWord").onclick = async () => {
   setMsg("#testMsg", "ok", "✓ שלד המבחן הורד, והמיפוי נבנה לפי אותו מבנה (בשלב 3). אחרי שתמלאו את המבחן אין צורך להעלות אותו – המיפוי כבר מוכן. אם תשנו ניקוד במבחן, עדכנו גם כאן.");
 };
 
+/* ---------- the teacher's own Word file, with the score table at the end replaced / added ---------- */
+let lastDocx = null;
+async function exportWithScoreTable(){
+  if (!lastDocx || !checkBeforeExport()) return;
+  try {
+    await loadLib("jszip");
+    const zip = await JSZip.loadAsync(lastDocx.buf);
+    const xml = await zip.file("word/document.xml").async("string");
+    const dom = new DOMParser().parseFromString(xml, "application/xml");
+    const body = dom.getElementsByTagNameNS(W_NS, "body")[0];
+    const textOf = el => [...el.getElementsByTagNameNS(W_NS, "t")].map(t => t.textContent).join("");
+    const top = [...body.children];
+    const sect = top.find(n => n.localName === "sectPr");
+    // existing score table: the tables after "למילוי על ידי המורה" (or any table with "ניקוד מרבי"), up to "סה״כ"
+    let anchor = top.find(n => n.localName === "p" && /למילוי (על ידי|ע"י) המורה/.test(textOf(n)));
+    const remove = [];
+    let start = anchor ? top.indexOf(anchor) + 1 : top.findIndex(n => n.localName === "tbl" && /ניקוד מ[י]?רבי/.test(textOf(n)));
+    if (start >= 0){
+      for (let i = start; i < top.length; i++){
+        const n = top[i], t = textOf(n).trim();
+        if (n.localName === "tbl" || (n.localName === "p" && (!t || /^סה"?״?כ/.test(t.replace(/״/g, '"'))))) { remove.push(n); if (/^סה/.test(t)) break; }
+        else break;
+      }
+      if (!anchor) anchor = top[start - 1];
+    }
+    remove.forEach(n => n.remove());
+    // no table yet: add "בהצלחה! / למילוי על ידי המורה" too, at the end of the test
+    const add = skeletonBody(anchor ? "table" : "tail");
+    const frag = new DOMParser().parseFromString(`<w:body xmlns:w="${W_NS}">${add}</w:body>`, "application/xml").documentElement;
+    const ref = anchor ? anchor.nextSibling : sect;
+    [...frag.childNodes].forEach(n => body.insertBefore(dom.importNode(n, true), ref));
+    zip.file("word/document.xml", new XMLSerializer().serializeToString(dom));
+    Object.keys(zip.files).forEach(k => { if (zip.files[k].dir) zip.remove(k); });   // folder entries upset some cloud editors
+    const blob = await zip.generateAsync({ type:"blob", mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+    download(blob, lastDocx.name.replace(/\.docx$/i, "") + " - עם טבלת ניקוד.docx");
+    setMsg("#expMsg", "ok", "✓ הורד המבחן שלך עם טבלת ניקוד מעודכנת בסופו. שום דבר אחר במבחן לא השתנה.");
+  } catch(e){ console.error(e); setMsg("#expMsg", "bad", "לא הצלחתי לעדכן את קובץ ה-Word: " + esc(e.message || e)); }
+}
+
 /* ---------- Word skeleton from the current mapping (built on template.docx: logo, בס"ד, page setup) ---------- */
 async function exportSkeleton(){
   if (!checkBeforeExport()) return;
@@ -1452,12 +1502,13 @@ async function exportSkeleton(){
     const start = doc.indexOf("<w:body>") + 8, sect = doc.indexOf("<w:sectPr");
     const out = doc.slice(0, start) + skeletonBody() + doc.slice(sect);
     zip.file("word/document.xml", out);
+    Object.keys(zip.files).forEach(k => { if (zip.files[k].dir) zip.remove(k); });   // folder entries upset some cloud editors
     const blob = await zip.generateAsync({ type:"blob", mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
     download(blob, `${fileBase()}.docx`);
     setMsg("#expMsg", "ok", "✓ שלד המבחן ב-Word הורד.");
   } catch(e){ console.error(e); setMsg("#expMsg", "bad", "שגיאה ביצירת קובץ ה-Word: " + esc(e.message || e)); }
 }
-function skeletonBody(){
+function skeletonBody(part){
   const x = t => esc(t);
   const run = (t, size = 24, o = {}) => `<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>${o.b ? "<w:b/><w:bCs/>" : ""}${o.i ? "<w:i/><w:iCs/>" : ""}${o.u ? '<w:u w:val="single"/>' : ""}${o.color ? `<w:color w:val="${o.color}"/>` : ""}<w:sz w:val="${size}"/><w:szCs w:val="${size}"/><w:rtl/></w:rPr><w:t xml:space="preserve">${x(t)}</w:t></w:r>`;
   // bidi paragraph: jc "left" = visual right (start), "right" = visual left (end)
@@ -1495,8 +1546,11 @@ function skeletonBody(){
     }
   }
   // score table, up to 10 columns per table
-  b += para(run("בהצלחה!", 28, { b:true }), "center", { before:240, after:60 });
-  b += para(run("למילוי על ידי המורה בלבד!", 24, { b:true }), "center", { after:160, keep:true });
+  if (part === "table" || part === "tail") b = "";
+  if (part !== "table") {
+    b += para(run("בהצלחה!", 28, { b:true }), "center", { before:240, after:60 });
+    b += para(run("למילוי על ידי המורה בלבד!", 24, { b:true }), "center", { after:160, keep:true });
+  }
   const PER = 10, LABEL = 1500;
   for (let s0 = 0; s0 < state.items.length; s0 += PER){
     const chunk = state.items.slice(s0, s0 + PER);
@@ -1513,7 +1567,6 @@ function skeletonBody(){
       row(qCells, 400),
       row([lab("סעיף")].concat(chunk.map(it => cell(val(it.sub || "—"), cw))), 400),
       row([lab("ניקוד מרבי")].concat(chunk.map(it => cell(val(fmt(it.max), { b:true }), cw))), 400),
-      row([lab("רמת חשיבה")].concat(chunk.map(it => cell(val(it.level || "", { size:16 }), cw))), 520),
       row([lab("ניקוד")].concat(chunk.map(() => cell(val(""), cw))), 800)
     ], widths);
     b += para("", "left", { after:120 });
