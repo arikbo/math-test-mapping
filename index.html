@@ -793,11 +793,14 @@ async function handleTestFile(file){
     // Word file whose score table is missing or out of date → offer the same file with an updated table
     const okTotal = Math.abs(sumMax() - 100) < 0.01;
     $("#myWordBtn").classList.toggle("hidden", !lastDocx);
-    if (lastDocx && (!fromTable || res.tableOutdated) && res.items.length && !okTotal)
-      $("#testMsg").insertAdjacentHTML("beforeend", `<div style="margin-top:8px">כדי לקבל את המבחן שלך עם טבלת ניקוד בסוף: תקנו קודם את הניקוד בטבלת המיפוי (שלב 3) עד שהסכום הוא 100, ואז לחצו בשלב 4 על „המבחן שלי עם טבלת ניקוד".</div>`);
-    if (lastDocx && (!fromTable || res.tableOutdated) && res.items.length && okTotal){
+    if (lastDocx && (!fromTable || res.tableOutdated) && res.items.length){
+      if (!okTotal) $("#testMsg").insertAdjacentHTML("beforeend", `<div style="margin-top:8px">לפני הורדת המבחן עם טבלת ניקוד: כדאי לתקן את הניקוד בטבלת המיפוי (שלב 3) עד שהסכום הוא 100 – הטבלה ב-Word תיבנה לפי מה שמופיע שם.</div>`);
       $("#testMsg").insertAdjacentHTML("beforeend", `<div class="row" style="margin-top:10px"><button class="btn primary" type="button" id="fixTableBtn">⬇ הורדת המבחן עם טבלת ניקוד ${fromTable ? "מעודכנת" : "בסוף"}</button></div>`);
-      $("#fixTableBtn").onclick = exportWithScoreTable;
+      $("#fixTableBtn").onclick = async () => {
+        if (Math.abs(sumMax() - 100) > 0.01 && !confirm(`סך הניקוד במיפוי הוא ${fmt(sumMax())} ולא 100. להוריד בכל זאת את המבחן עם טבלה לפי הניקוד הזה?`)) return;
+        await exportWithScoreTable();
+        $("#fixTableBtn").insertAdjacentHTML("afterend", lastLink);
+      };
     }
   } catch(e){ setMsg("#testMsg", "bad", esc(e.message || e)); }
 }
@@ -1147,11 +1150,16 @@ function insertColumn(at){
    ========================================================= */
 function colLetter(n){ let s = ""; n++; while (n > 0){ const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
 function fileBase(){ return (state.title || "מבחן").replace(/[\\/:*?"<>|]+/g, " ").trim(); }
+// starts the download and returns a "tap here" link: phones sometimes block a download that took a moment to prepare
+let lastLink = "";
 function download(blob, name){
+  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = name;
+  a.href = url; a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+  setTimeout(() => URL.revokeObjectURL(url), 15 * 60 * 1000);
+  lastLink = `<div style="margin-top:8px"><a class="btn" href="${url}" download="${esc(name)}">📥 אם ההורדה לא התחילה – לחצו כאן</a></div>`;
+  return lastLink;
 }
 function checkBeforeExport(){
   if (!state.items.length){ setMsg("#expMsg", "bad", "אין עדיין סעיפים במיפוי. העלו מבחן בשלב 1 או הוסיפו עמודות ידנית."); return false; }
@@ -1166,7 +1174,7 @@ async function exportXlsx(){
     const wb = buildWorkbook();
     const buf = await wb.xlsx.writeBuffer();
     download(new Blob([buf], { type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `מיפוי - ${fileBase()}.xlsx`);
-    setMsg("#expMsg", "ok", "✓ הקובץ הורד. בגיליון \"מיפוי\" ממלאים רק את התאים הצהובים; הסיכום מתעדכן לבד.");
+    setMsg("#expMsg", "ok", "✓ הקובץ הורד. בגיליון \"מיפוי\" ממלאים רק את התאים הצהובים; הסיכום מתעדכן לבד." + lastLink);
   } catch(e){ console.error(e); setMsg("#expMsg", "bad", "שגיאה ביצירת הקובץ: " + esc(e.message || e)); }
 }
 
@@ -1364,7 +1372,7 @@ function exportCsv(){
   const q = v => { v = String(v ?? ""); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
   const csv = "﻿" + rows.map(r => r.map(q).join(",")).join("\r\n");
   download(new Blob([csv], { type:"text/csv;charset=utf-8" }), `מיפוי - ${fileBase()}.csv`);
-  setMsg("#expMsg", "ok", "✓ קובץ CSV הורד (ערכים בלבד, בלי נוסחאות ועיצוב – לאקסל מלא בחרו \"הורדת Excel\").");
+  setMsg("#expMsg", "ok", "✓ קובץ CSV הורד (ערכים בלבד, בלי נוסחאות ועיצוב – לאקסל מלא בחרו \"הורדת Excel\")." + lastLink);
 }
 
 /* =========================================================
@@ -1453,7 +1461,7 @@ $("#bMap").onclick = () => {
 $("#bWord").onclick = async () => {
   builderToItems();
   await exportSkeleton();
-  setMsg("#testMsg", "ok", "✓ שלד המבחן הורד, והמיפוי נבנה לפי אותו מבנה (בשלב 3). אחרי שתמלאו את המבחן אין צורך להעלות אותו – המיפוי כבר מוכן. אם תשנו ניקוד במבחן, עדכנו גם כאן.");
+  setMsg("#testMsg", "ok", "✓ שלד המבחן הורד, והמיפוי נבנה לפי אותו מבנה (בשלב 3). אחרי שתמלאו את המבחן אין צורך להעלות אותו – המיפוי כבר מוכן. אם תשנו ניקוד במבחן, עדכנו גם כאן." + lastLink);
 };
 
 /* ---------- the teacher's own Word file, with the score table at the end replaced / added ---------- */
@@ -1496,7 +1504,7 @@ async function exportWithScoreTable(){
     Object.keys(zip.files).forEach(k => { if (zip.files[k].dir) delete zip.files[k]; });   // drop empty folder entries only (zip.remove would delete the folder's files too)
     const blob = await zip.generateAsync({ type:"blob", compression:"DEFLATE", mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
     download(blob, lastDocx.name.replace(/\.docx$/i, "") + " - עם טבלת ניקוד.docx");
-    setMsg("#expMsg", "ok", "✓ הורד המבחן שלך עם טבלת ניקוד מעודכנת בסופו. שום דבר אחר במבחן לא השתנה.");
+    setMsg("#expMsg", "ok", "✓ הורד המבחן שלך עם טבלת ניקוד מעודכנת בסופו. שום דבר אחר במבחן לא השתנה." + lastLink);
   } catch(e){ console.error(e); setMsg("#expMsg", "bad", "לא הצלחתי לעדכן את קובץ ה-Word: " + esc(e.message || e)); }
 }
 // top-level elements of the document body as [start, end) offsets in the XML text
@@ -1529,7 +1537,7 @@ async function exportSkeleton(){
     Object.keys(zip.files).forEach(k => { if (zip.files[k].dir) delete zip.files[k]; });   // drop empty folder entries only (zip.remove would delete the folder's files too)
     const blob = await zip.generateAsync({ type:"blob", mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
     download(blob, `${fileBase()}.docx`);
-    setMsg("#expMsg", "ok", "✓ שלד המבחן ב-Word הורד.");
+    setMsg("#expMsg", "ok", "✓ שלד המבחן ב-Word הורד." + lastLink);
   } catch(e){ console.error(e); setMsg("#expMsg", "bad", "שגיאה ביצירת קובץ ה-Word: " + esc(e.message || e)); }
 }
 function skeletonBody(part){
@@ -1623,7 +1631,10 @@ $("#levelsInput").onchange = e => {
 $("#xlsxBtn").onclick = exportXlsx;
 $("#csvBtn").onclick = exportCsv;
 $("#wordBtn").onclick = exportSkeleton;
-$("#myWordBtn").onclick = exportWithScoreTable;
+$("#myWordBtn").onclick = () => {
+  if (Math.abs(sumMax() - 100) > 0.01 && !confirm(`סך הניקוד במיפוי הוא ${fmt(sumMax())} ולא 100. להוריד בכל זאת?`)) return;
+  exportWithScoreTable();
+};
 $("#resetBtn").onclick = () => {
   if (!confirm("למחוק את כל המיפוי והתלמידים ולהתחיל מחדש?")) return;
   state = freshState(); $("#testText").value = ""; $("#stuText").value = "";
