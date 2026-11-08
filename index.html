@@ -208,6 +208,7 @@ footer{color:var(--muted);text-align:center;font-size:13px;padding:10px 16px 30p
     <button class="btn primary big" id="xlsxBtn" type="button">⬇ הורדת Excel</button>
     <button class="btn big" id="csvBtn" type="button">⬇ הורדת CSV</button>
     <button class="btn big" id="wordBtn" type="button">⬇ שלד מבחן ב-Word</button>
+    <button class="btn big hidden" id="myWordBtn" type="button">⬇ המבחן שלי עם טבלת ניקוד</button>
     <button class="btn danger" id="resetBtn" type="button">התחלה מחדש</button>
   </div>
   <div class="msg" id="expMsg"></div>
@@ -790,7 +791,11 @@ async function handleTestFile(file){
     const res = fromTable || auto;
     applyParsed(res, file.name);
     // Word file whose score table is missing or out of date → offer the same file with an updated table
-    if (lastDocx && (!fromTable || res.tableOutdated) && res.items.length){
+    const okTotal = Math.abs(sumMax() - 100) < 0.01;
+    $("#myWordBtn").classList.toggle("hidden", !lastDocx);
+    if (lastDocx && (!fromTable || res.tableOutdated) && res.items.length && !okTotal)
+      $("#testMsg").insertAdjacentHTML("beforeend", `<div style="margin-top:8px">כדי לקבל את המבחן שלך עם טבלת ניקוד בסוף: תקנו קודם את הניקוד בטבלת המיפוי (שלב 3) עד שהסכום הוא 100, ואז לחצו בשלב 4 על „המבחן שלי עם טבלת ניקוד".</div>`);
+    if (lastDocx && (!fromTable || res.tableOutdated) && res.items.length && okTotal){
       $("#testMsg").insertAdjacentHTML("beforeend", `<div class="row" style="margin-top:10px"><button class="btn primary" type="button" id="fixTableBtn">⬇ הורדת המבחן עם טבלת ניקוד ${fromTable ? "מעודכנת" : "בסוף"}</button></div>`);
       $("#fixTableBtn").onclick = exportWithScoreTable;
     }
@@ -1459,35 +1464,54 @@ async function exportWithScoreTable(){
     await loadLib("jszip");
     const zip = await JSZip.loadAsync(lastDocx.buf);
     const xml = await zip.file("word/document.xml").async("string");
-    const dom = new DOMParser().parseFromString(xml, "application/xml");
-    const body = dom.getElementsByTagNameNS(W_NS, "body")[0];
-    const textOf = el => [...el.getElementsByTagNameNS(W_NS, "t")].map(t => t.textContent).join("");
-    const top = [...body.children];
-    const sect = top.find(n => n.localName === "sectPr");
-    // existing score table: the tables after "למילוי על ידי המורה" (or any table with "ניקוד מרבי"), up to "סה״כ"
-    let anchor = top.find(n => n.localName === "p" && /למילוי (על ידי|ע"י) המורה/.test(textOf(n)));
-    const remove = [];
-    let start = anchor ? top.indexOf(anchor) + 1 : top.findIndex(n => n.localName === "tbl" && /ניקוד מ[י]?רבי/.test(textOf(n)));
+    // work on the text itself (no DOM re-serialization – Safari rewrites namespace prefixes and Word then refuses the file)
+    const bodyOpen = xml.search(/<w:body[\s>]/), bodyStart = xml.indexOf(">", bodyOpen) + 1, bodyEnd = xml.lastIndexOf("</w:body>");
+    const spans = topLevelSpans(xml, bodyStart, bodyEnd);
+    const textOf = sp => (xml.slice(sp.s, sp.e).match(/<w:t(?:\s[^>]*)?>[^<]*<\/w:t>/g) || []).map(t => t.replace(/<[^>]+>/g, "")).join("");
+    let anchorIdx = spans.findIndex(sp => sp.name === "w:p" && /למילוי (על ידי|ע"י) המורה/.test(textOf(sp)));
+    let start = anchorIdx >= 0 ? anchorIdx + 1 : spans.findIndex(sp => sp.name === "w:tbl" && /ניקוד מי?רבי/.test(textOf(sp)));
+    const drop = new Set();
     if (start >= 0){
-      for (let i = start; i < top.length; i++){
-        const n = top[i], t = textOf(n).trim();
-        if (n.localName === "tbl" || (n.localName === "p" && (!t || /^סה"?״?כ/.test(t.replace(/״/g, '"'))))) { remove.push(n); if (/^סה/.test(t)) break; }
+      for (let i = start; i < spans.length; i++){
+        const sp = spans[i], t = textOf(sp).replace(/״/g, '"').trim();
+        if (sp.name === "w:tbl" || (sp.name === "w:p" && (!t || /^סה"?כ/.test(t)))){ drop.add(i); if (/^סה/.test(t)) break; }
         else break;
       }
-      if (!anchor) anchor = top[start - 1];
+      if (anchorIdx < 0) anchorIdx = start - 1;
     }
-    remove.forEach(n => n.remove());
-    // no table yet: add "בהצלחה! / למילוי על ידי המורה" too, at the end of the test
-    const add = skeletonBody(anchor ? "table" : "tail");
-    const frag = new DOMParser().parseFromString(`<w:body xmlns:w="${W_NS}">${add}</w:body>`, "application/xml").documentElement;
-    const ref = anchor ? anchor.nextSibling : sect;
-    [...frag.childNodes].forEach(n => body.insertBefore(dom.importNode(n, true), ref));
-    zip.file("word/document.xml", new XMLSerializer().serializeToString(dom));
-    Object.keys(zip.files).forEach(k => { if (zip.files[k].dir) zip.remove(k); });   // folder entries upset some cloud editors
-    const blob = await zip.generateAsync({ type:"blob", mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+    // no table yet: add "בהצלחה! / למילוי על ידי המורה" too, at the end (before the section properties)
+    const add = skeletonBody(anchorIdx >= 0 ? "table" : "tail");
+    const sectIdx = spans.findIndex(sp => sp.name === "w:sectPr");
+    const insertAfter = anchorIdx >= 0 ? anchorIdx : (sectIdx >= 0 ? sectIdx - 1 : spans.length - 1);
+    let outBody = "", pos = bodyStart;
+    spans.forEach((sp, i) => {
+      outBody += xml.slice(pos, sp.s);                       // whitespace between elements
+      if (!drop.has(i)) outBody += xml.slice(sp.s, sp.e);
+      if (i === insertAfter) outBody += add;
+      pos = sp.e;
+    });
+    if (insertAfter < 0) outBody = add + outBody;
+    outBody += xml.slice(pos, bodyEnd);
+    zip.file("word/document.xml", xml.slice(0, bodyStart) + outBody + xml.slice(bodyEnd));
+    Object.keys(zip.files).forEach(k => { if (zip.files[k].dir) delete zip.files[k]; });   // drop empty folder entries only (zip.remove would delete the folder's files too)
+    const blob = await zip.generateAsync({ type:"blob", compression:"DEFLATE", mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
     download(blob, lastDocx.name.replace(/\.docx$/i, "") + " - עם טבלת ניקוד.docx");
     setMsg("#expMsg", "ok", "✓ הורד המבחן שלך עם טבלת ניקוד מעודכנת בסופו. שום דבר אחר במבחן לא השתנה.");
   } catch(e){ console.error(e); setMsg("#expMsg", "bad", "לא הצלחתי לעדכן את קובץ ה-Word: " + esc(e.message || e)); }
+}
+// top-level elements of the document body as [start, end) offsets in the XML text
+function topLevelSpans(xml, from, to){
+  const re = /<(\/?)([A-Za-z0-9]+:[A-Za-z0-9]+)\b[^>]*?(\/?)>/g;
+  re.lastIndex = from;
+  const out = [];
+  let depth = 0, cur = null, m;
+  while ((m = re.exec(xml)) && m.index < to){
+    if (m[1]){ if (--depth === 0 && cur){ cur.e = re.lastIndex; out.push(cur); cur = null; } continue; }
+    if (depth === 0) cur = { s: m.index, name: m[2] };
+    if (m[3]){ if (depth === 0){ cur.e = re.lastIndex; out.push(cur); cur = null; } }
+    else depth++;
+  }
+  return out;
 }
 
 /* ---------- Word skeleton from the current mapping (built on template.docx: logo, בס"ד, page setup) ---------- */
@@ -1502,7 +1526,7 @@ async function exportSkeleton(){
     const start = doc.indexOf("<w:body>") + 8, sect = doc.indexOf("<w:sectPr");
     const out = doc.slice(0, start) + skeletonBody() + doc.slice(sect);
     zip.file("word/document.xml", out);
-    Object.keys(zip.files).forEach(k => { if (zip.files[k].dir) zip.remove(k); });   // folder entries upset some cloud editors
+    Object.keys(zip.files).forEach(k => { if (zip.files[k].dir) delete zip.files[k]; });   // drop empty folder entries only (zip.remove would delete the folder's files too)
     const blob = await zip.generateAsync({ type:"blob", mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
     download(blob, `${fileBase()}.docx`);
     setMsg("#expMsg", "ok", "✓ שלד המבחן ב-Word הורד.");
@@ -1510,7 +1534,7 @@ async function exportSkeleton(){
 }
 function skeletonBody(part){
   const x = t => esc(t);
-  const run = (t, size = 24, o = {}) => `<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>${o.b ? "<w:b/><w:bCs/>" : ""}${o.i ? "<w:i/><w:iCs/>" : ""}${o.u ? '<w:u w:val="single"/>' : ""}${o.color ? `<w:color w:val="${o.color}"/>` : ""}<w:sz w:val="${size}"/><w:szCs w:val="${size}"/><w:rtl/></w:rPr><w:t xml:space="preserve">${x(t)}</w:t></w:r>`;
+  const run = (t, size = 24, o = {}) => `<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>${o.b ? "<w:b/><w:bCs/>" : ""}${o.i ? "<w:i/><w:iCs/>" : ""}${o.color ? `<w:color w:val="${o.color}"/>` : ""}<w:sz w:val="${size}"/><w:szCs w:val="${size}"/>${o.u ? '<w:u w:val="single"/>' : ""}<w:rtl/></w:rPr><w:t xml:space="preserve">${x(t)}</w:t></w:r>`;
   // bidi paragraph: jc "left" = visual right (start), "right" = visual left (end)
   const para = (runs = "", jc = "left", o = {}) => `<w:p><w:pPr>${o.keep ? "<w:keepNext/>" : ""}${o.shade ? `<w:shd w:val="clear" w:color="auto" w:fill="${o.shade}"/>` : ""}<w:bidi/><w:spacing w:before="${o.before || 0}" w:after="${o.after ?? 60}"/><w:jc w:val="${jc}"/></w:pPr>${runs}</w:p>`;
   const noB = '<w:tcBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/></w:tcBorders>';
@@ -1599,6 +1623,7 @@ $("#levelsInput").onchange = e => {
 $("#xlsxBtn").onclick = exportXlsx;
 $("#csvBtn").onclick = exportCsv;
 $("#wordBtn").onclick = exportSkeleton;
+$("#myWordBtn").onclick = exportWithScoreTable;
 $("#resetBtn").onclick = () => {
   if (!confirm("למחוק את כל המיפוי והתלמידים ולהתחיל מחדש?")) return;
   state = freshState(); $("#testText").value = ""; $("#stuText").value = "";
