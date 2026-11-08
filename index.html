@@ -1,0 +1,1028 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>מיפוי מבחן אוטומטי</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f5f6f8; --card:#fff; --ink:#1d2433; --muted:#667085; --line:#dfe3ea;
+  --brand:#2457c5; --brand-soft:#e8eefc; --ok:#1a7f4b; --ok-soft:#e5f5ec;
+  --warn:#a15c00; --warn-soft:#fff4e0; --bad:#c62828; --bad-soft:#fdeaea;
+  --input:#fffbe6; --head:#f0f3f8;
+  --lvl1:#e3f0ff; --lvl2:#eaf7ea; --lvl3:#fbeaf3; --lvl4:#fff1df;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Assistant,Arial,sans-serif;font-size:16px;line-height:1.5}
+header.top{background:var(--card);border-bottom:1px solid var(--line);padding:18px 16px}
+header.top .wrap{max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+header.top h1{margin:0;font-size:24px;font-weight:800}
+header.top p{margin:0;color:var(--muted)}
+main{max-width:1200px;margin:0 auto;padding:16px}
+.step{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
+.step h2{margin:0 0 4px;font-size:20px;display:flex;align-items:center;gap:10px}
+.step h2 .num{background:var(--brand);color:#fff;border-radius:50%;width:30px;height:30px;display:inline-grid;place-items:center;font-size:16px;flex:none}
+.step .sub{color:var(--muted);margin:0 0 14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:760px){.grid2{grid-template-columns:1fr}}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:18px;text-align:center;background:#fafbfc;cursor:pointer;transition:.15s}
+.drop:hover,.drop.over{border-color:var(--brand);background:var(--brand-soft)}
+.drop strong{display:block;font-size:17px}
+.drop small{color:var(--muted)}
+textarea{width:100%;min-height:150px;border:1px solid var(--line);border-radius:10px;padding:10px;font:inherit;resize:vertical;background:#fff;color:var(--ink)}
+input[type=text],input[type=number],select{font:inherit;color:var(--ink)}
+.btn{font:inherit;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:9px;padding:8px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--brand);color:var(--brand)}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn.primary:hover{filter:brightness(1.08);color:#fff}
+.btn.big{padding:12px 22px;font-size:17px}
+.btn.danger:hover{border-color:var(--bad);color:var(--bad)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.msg{border-radius:10px;padding:10px 14px;margin:12px 0 0}
+.msg.info{background:var(--brand-soft)}
+.msg.ok{background:var(--ok-soft);color:var(--ok)}
+.msg.warn{background:var(--warn-soft);color:var(--warn)}
+.msg.bad{background:var(--bad-soft);color:var(--bad)}
+.msg:empty{display:none}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.chip{border:1px solid var(--line);border-radius:999px;padding:3px 12px;background:#fff;font-size:15px}
+.chip b{font-weight:800}
+.chip.bad{border-color:var(--bad);color:var(--bad)}
+.chip.ok{border-color:var(--ok);color:var(--ok)}
+label.inline{display:flex;align-items:center;gap:6px}
+#titleInput{border:1px solid var(--line);border-radius:9px;padding:8px 10px;min-width:280px;flex:1}
+
+/* table */
+.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:10px;max-height:72vh;background:#fff}
+table.map{border-collapse:separate;border-spacing:0;font-size:15px}
+table.map th,table.map td{border-bottom:1px solid var(--line);border-left:1px solid var(--line);padding:0;text-align:center;white-space:nowrap}
+table.map thead th{background:var(--head);position:sticky;z-index:2}
+table.map thead tr:nth-child(1) th{top:0}
+table.map thead tr:nth-child(2) th{top:34px}
+table.map thead tr:nth-child(3) th{top:68px}
+table.map thead tr:nth-child(4) th{top:102px}
+table.map thead tr:nth-child(5) th{top:136px}
+table.map thead th{height:34px}
+table.map .rowhead{background:var(--head);font-weight:700;padding:0 8px;text-align:right;position:sticky;right:0;z-index:3;min-width:150px}
+table.map thead .rowhead{z-index:4}
+table.map .stick2{position:sticky;right:150px;z-index:1;background:#fff}
+table.map thead .stick2{z-index:4;background:var(--head)}
+table.map input,table.map select{border:0;background:transparent;width:100%;height:33px;text-align:center;padding:0 4px;outline:none}
+table.map input:focus,table.map select:focus{background:#fff;box-shadow:inset 0 0 0 2px var(--brand)}
+table.map td.score input{background:var(--input);min-width:62px}
+table.map td.score input.over{background:var(--bad-soft);color:var(--bad);font-weight:700}
+table.map td.name input{text-align:right;min-width:170px;background:var(--input)}
+table.map td.sid input{width:110px}
+table.map td.idx{width:44px;color:var(--muted);background:#fff;position:sticky;right:0;z-index:1;min-width:44px}
+table.map th.qh input{font-weight:800}
+table.map th select{font-size:14px;min-width:118px}
+table.map td.tot,table.map td.grade{font-weight:800;min-width:64px;padding:0 6px;background:#f7f8fb}
+table.map td.grade.low{color:var(--bad);background:var(--bad-soft)}
+table.map tfoot td{background:var(--head);font-weight:700;height:32px;padding:0 6px;position:sticky;bottom:0}
+table.map tfoot tr:first-child td{bottom:32px}
+table.map tfoot td.low{color:var(--bad)}
+table.map th .colbtns{display:flex;justify-content:center;gap:2px}
+.mini{border:0;background:transparent;cursor:pointer;color:var(--muted);font-size:15px;padding:2px 6px;border-radius:6px;font:inherit}
+.mini:hover{background:var(--bad-soft);color:var(--bad)}
+.mini.add:hover{background:var(--brand-soft);color:var(--brand)}
+th.lvl-0{background:var(--lvl1)!important} th.lvl-1{background:var(--lvl2)!important} th.lvl-2{background:var(--lvl3)!important} th.lvl-3{background:var(--lvl4)!important}
+.legend{color:var(--muted);font-size:14px;margin-top:8px}
+.levels-edit{margin-top:10px;font-size:14px;color:var(--muted)}
+.levels-edit input{border:1px solid var(--line);border-radius:7px;padding:3px 8px;width:100%;max-width:560px}
+details summary{cursor:pointer;color:var(--brand);font-weight:600}
+.export-row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+footer{color:var(--muted);text-align:center;font-size:13px;padding:10px 16px 30px}
+.hidden{display:none!important}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--brand);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <div>
+    <h1>מיפוי מבחן אוטומטי</h1>
+    <p>מעלים מבחן ← טוענים תלמידים ← עורכים ← מורידים אקסל מוכן</p>
+  </div>
+</div></header>
+
+<main>
+<!-- STEP 1 -->
+<section class="step" id="step1">
+  <h2><span class="num">1</span> העלאת מבחן</h2>
+  <p class="sub">קובץ Word ‏(‎.docx‎), PDF או טקסט – או הדבקה של טקסט המבחן. המערכת מזהה שאלות, סעיפים וניקוד.</p>
+  <div class="grid2">
+    <div>
+      <div class="drop" id="testDrop" tabindex="0" role="button" aria-label="העלאת קובץ מבחן">
+        <strong>📄 גררו לכאן את קובץ המבחן</strong>
+        <small>או לחצו לבחירה · docx / pdf / txt</small>
+      </div>
+      <input type="file" id="testFile" accept=".docx,.pdf,.txt,.md,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="sampleBtn" type="button">טעינת מבחן לדוגמה</button>
+        <button class="btn" id="emptyBtn" type="button">מיפוי ריק (בניה ידנית)</button>
+      </div>
+    </div>
+    <div>
+      <textarea id="testText" placeholder="או הדביקו כאן את טקסט המבחן…&#10;&#10;שאלה 1 (12 נקודות)&#10;א. חשבו: … 6 נק׳&#10;ב. הסבירו … 6 נק׳"></textarea>
+      <div class="row" style="margin-top:8px"><button class="btn primary" id="parseBtn" type="button">ניתוח הטקסט</button></div>
+    </div>
+  </div>
+  <div class="msg" id="testMsg"></div>
+</section>
+
+<!-- STEP 2 -->
+<section class="step" id="step2">
+  <h2><span class="num">2</span> רשימת תלמידים <span style="font-weight:400;color:var(--muted);font-size:16px">(לא חובה)</span></h2>
+  <p class="sub">קובץ Excel / CSV / טקסט (שם בכל שורה). בלי קובץ – נוצרות 40 שורות ריקות.</p>
+  <div class="grid2">
+    <div>
+      <div class="drop" id="stuDrop" tabindex="0" role="button" aria-label="העלאת רשימת תלמידים">
+        <strong>👥 גררו לכאן את רשימת התלמידים</strong>
+        <small>xlsx / xls / csv / txt</small>
+      </div>
+      <input type="file" id="stuFile" accept=".xlsx,.xls,.csv,.txt" hidden>
+    </div>
+    <div>
+      <textarea id="stuText" style="min-height:96px" placeholder="או הדביקו שמות – שם אחד בכל שורה"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="btn" id="stuPasteBtn" type="button">טעינת השמות שהודבקו</button>
+        <button class="btn" id="stuDefaultBtn" type="button">40 שורות ריקות</button>
+      </div>
+    </div>
+  </div>
+  <div class="msg" id="stuMsg"></div>
+</section>
+
+<!-- STEP 3 -->
+<section class="step" id="step3">
+  <h2><span class="num">3</span> טבלת המיפוי</h2>
+  <p class="sub">כל תא ניתן לעריכה. הכותרות (שאלה, סעיף, רמת חשיבה, ניקוד מרבי) קובעות את מבנה המיפוי; התאים הצהובים – ניקוד התלמידים.</p>
+  <div class="row" style="margin-bottom:12px">
+    <input type="text" id="titleInput" placeholder="שם המבחן (למשל: מבחן מחצית א׳ – כיתה ז׳3)">
+    <label class="inline"><input type="checkbox" id="showTopic"> שורת נושא</label>
+    <label class="inline"><input type="checkbox" id="showSid" checked> עמודת מס׳ זיהוי</label>
+  </div>
+  <div class="tablewrap"><table class="map" id="mapTable"></table></div>
+  <div class="row" style="margin-top:12px">
+    <button class="btn" id="addRowBtn" type="button">＋ הוספת תלמיד</button>
+    <button class="btn" id="add5Btn" type="button">＋5 שורות</button>
+    <button class="btn" id="addColBtn" type="button">＋ הוספת סעיף/שאלה</button>
+    <button class="btn danger" id="trimBtn" type="button">מחיקת שורות ריקות</button>
+  </div>
+  <div class="chips" id="chips"></div>
+  <div class="legend">רמת החשיבה מוצעת אוטומטית לפי מילות ההוראה (חשבו → יישום, הסבירו/הוכיחו → חשיבה גבוהה…) – כדאי לעבור ולאשר.</div>
+  <details class="levels-edit"><summary>עריכת רשימת רמות החשיבה</summary>
+    <p>מופרדות בפסיק. למשל: ידע/הכרה, יישום, חשיבה גבוהה</p>
+    <input type="text" id="levelsInput">
+  </details>
+</section>
+
+<!-- STEP 4 -->
+<section class="step" id="step4">
+  <h2><span class="num">4</span> ייצוא</h2>
+  <p class="sub">האקסל כולל נוסחאות לסה״כ ולציון, אימות ניקוד (0 עד המרבי), ממוצע ואחוז הצלחה לכל סעיף, וגיליון סיכום לפי רמת חשיבה.</p>
+  <div class="export-row">
+    <button class="btn primary big" id="xlsxBtn" type="button">⬇ הורדת Excel</button>
+    <button class="btn big" id="csvBtn" type="button">⬇ הורדת CSV</button>
+    <button class="btn danger" id="resetBtn" type="button">התחלה מחדש</button>
+  </div>
+  <div class="msg" id="expMsg"></div>
+</section>
+</main>
+<footer>הכול רץ בדפדפן – הקבצים לא נשלחים לשום שרת. הטיוטה נשמרת אוטומטית במחשב הזה.</footer>
+
+<script>
+"use strict";
+/* ---------- libraries (loaded on demand) ---------- */
+const LIBS = {
+  mammoth: "https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js",
+  pdfjs:   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
+  pdfwork: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js",
+  xlsx:    "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
+  exceljs: "https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"
+};
+const loaded = {};
+function loadLib(key){
+  if (!loaded[key]) loaded[key] = new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = LIBS[key]; s.onload = res;
+    s.onerror = () => { delete loaded[key]; rej(new Error("לא הצלחתי לטעון רכיב (" + key + "). בדקו חיבור לאינטרנט.")); };
+    document.head.appendChild(s);
+  });
+  return loaded[key];
+}
+
+/* ---------- state ---------- */
+const DEFAULT_LEVELS = ["ידע/הכרה", "יישום", "חשיבה גבוהה"];
+const DEFAULT_ROWS = 40;
+const DEFAULT_ROWS_NOTE = "נוצרו 40 שורות תלמידים כברירת מחדל. ניתן למחוק שורות מיותרות או להוסיף חדשות חופשי – זה לא פוגע במבנה המיפוי.";
+let uid = 1;
+const nid = () => "i" + (uid++) + Math.random().toString(36).slice(2, 6);
+let state = freshState();
+function freshState(){
+  return { title:"", levels:DEFAULT_LEVELS.slice(), showTopic:false, showSid:true,
+    items:[], students:blankStudents(DEFAULT_ROWS) };
+}
+function blankStudents(n){ return Array.from({length:n}, () => ({id:nid(), name:"", sid:"", scores:{}})); }
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function setMsg(id, cls, html){ const el = $(id); el.className = "msg " + (cls||""); el.innerHTML = html || ""; }
+
+/* ---------- persistence (per-browser convenience only) ---------- */
+function save(){ try { localStorage.setItem("mipui-draft-v1", JSON.stringify(state)); } catch(e){} }
+function restore(){
+  try {
+    const s = JSON.parse(localStorage.getItem("mipui-draft-v1") || "null");
+    if (s && Array.isArray(s.items) && Array.isArray(s.students)) { state = Object.assign(freshState(), s); return true; }
+  } catch(e){}
+  return false;
+}
+
+/* =========================================================
+   TEST PARSER
+   ========================================================= */
+const HEB_LETTERS = "אבגדהוזחטיכ";
+function normalize(t){
+  return t.replace(/ /g, " ")
+    .replace(/[‎‏‪-‮⁦-⁩]/g, "")
+    .replace(/[׳`’‘]/g, "'").replace(/[״“”]/g, '"')
+    .replace(/[ \t]+/g, " ");
+}
+// points marker: "(10 נקודות)", "10 נק'", "נק' 10", "[5 נק]"
+const PTS_RE = /(\d+(?:\.\d+)?)\s*(?:נקודות|נקודה|נק'?|נק\.)(?![א-ת])/g;
+const PTS_RE2 = /(?:נקודות|נק'|נק\.?)\s*:?\s*(\d+(?:\.\d+)?)/g;
+function findPoints(line){
+  let m, last = null;
+  PTS_RE.lastIndex = 0;
+  while ((m = PTS_RE.exec(line))) last = parseFloat(m[1]);
+  if (last == null) { PTS_RE2.lastIndex = 0; while ((m = PTS_RE2.exec(line))) last = parseFloat(m[1]); }
+  return last;
+}
+function stripPoints(line){
+  return line.replace(/[\(\[]?\s*\d+(?:\.\d+)?\s*(?:נקודות|נקודה|נק'?|נק\.)(?![א-ת])\s*[\)\]]?/g, "").trim();
+}
+const ONLY_PTS_RE = /^[\(\[]?\s*(?:\d+(?:\.\d+)?\s*(?:נקודות|נקודה|נק'?|נק\.?)|(?:נקודות|נק'?)\s*:?\s*\d+(?:\.\d+)?)\s*[\)\]]?\s*$/;
+const Q_RE = /^(?:שאלה|תרגיל|בעיה)\s*(?:מס(?:פר|')?\.?\s*)?(\d+)\s*[:.\-–)]?\s*(.*)$/;
+const Q_RE_HEB = /^(?:שאלה|תרגיל|בעיה)\s+(ראשונה|שנייה|שניה|שלישית|רביעית|חמישית|שישית|שביעית|שמינית|תשיעית|עשירית)\s*[:.\-–]?\s*(.*)$/;
+const HEB_ORD = {"ראשונה":1,"שנייה":2,"שניה":2,"שלישית":3,"רביעית":4,"חמישית":5,"שישית":6,"שביעית":7,"שמינית":8,"תשיעית":9,"עשירית":10};
+const SUB_RE = new RegExp("^(?:סעיף\\s*)?\\(?([" + HEB_LETTERS + "])(?:\\s*['.)\\-:]|\\))\\s*(.*)$");
+const SUB_RE2 = new RegExp("^סעיף\\s+([" + HEB_LETTERS + "])'?\\s*[:.\\-]?\\s*(.*)$");
+const NUM_Q_RE = /^(\d{1,2})\s*[.)]\s+(.+)$/;
+const STOP_RE = /(בהצלחה|למילוי על ידי המורה|למילוי ע"י המורה|טבלת ניקוד)/;
+
+function parseTest(raw){
+  const lines = normalize(raw).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const qs = [];
+  let q = null, sub = null, sawQuestion = false;
+  const pre = [];
+  for (let line of lines){
+    if (STOP_RE.test(line) && sawQuestion) break;
+    let m = line.match(Q_RE) || line.match(Q_RE_HEB);
+    if (m){
+      const num = /^\d+$/.test(m[1]) ? parseInt(m[1]) : HEB_ORD[m[1]];
+      q = { num:String(num), points:findPoints(line), text:[stripPoints(m[2]||"")], subs:[] };
+      qs.push(q); sub = null; sawQuestion = true; continue;
+    }
+    if (!q){ pre.push(line); continue; }
+    m = line.match(SUB_RE2) || line.match(SUB_RE);
+    // guard: a sub-letter must be the next expected letter-ish (avoids "ב" as a word start)
+    if (m && isPlausibleSub(q, m[1], line)){
+      sub = { letter:m[1], points:findPoints(line), text:[stripPoints(m[2]||"")] };
+      q.subs.push(sub); continue;
+    }
+    if (ONLY_PTS_RE.test(line)){
+      const p = findPoints(line);
+      if (sub && sub.points == null) sub.points = p;
+      else if (!sub && q.points == null) q.points = p;
+      else if (sub && sub.points != null && q.points == null && q.subs.length === 0) q.points = p;
+      continue;
+    }
+    const p = findPoints(line);
+    if (p != null){
+      if (sub && sub.points == null) sub.points = p;
+      else if (!sub && q.points == null) q.points = p;
+    }
+    (sub ? sub.text : q.text).push(stripPoints(line));
+  }
+  // fallback: numbered list "1. ..." when no "שאלה N" headers were found
+  if (!qs.length){
+    let cur = null;
+    for (const line of lines){
+      if (STOP_RE.test(line) && qs.length) break;
+      const m = line.match(NUM_Q_RE);
+      if (m){ cur = { num:m[1], points:findPoints(line), text:[stripPoints(m[2])], subs:[] }; qs.push(cur); continue; }
+      if (!cur) continue;
+      const s = line.match(SUB_RE);
+      if (s && isPlausibleSub(cur, s[1], line)){ cur.subs.push({ letter:s[1], points:findPoints(line), text:[stripPoints(s[2]||"")] }); continue; }
+      const p = findPoints(line);
+      const last = cur.subs[cur.subs.length-1];
+      if (p != null){ if (last && last.points == null) last.points = p; else if (!last && cur.points == null) cur.points = p; }
+      (last ? last.text : cur.text).push(stripPoints(line));
+    }
+  }
+  return toItems(qs);
+}
+function isPlausibleSub(q, letter, line){
+  const idx = HEB_LETTERS.indexOf(letter);
+  const expected = q.subs.length;
+  if (idx === expected) return true;               // next letter in order
+  if (idx === 0 && expected === 0) return true;
+  // allow skipping one letter only if the line clearly looks like a sub-item ("ג." / "ג)")
+  return idx === expected + 1 && /^[^\s]['.)]/.test(line);
+}
+function toItems(qs){
+  const items = [], warnings = [];
+  for (const q of qs){
+    const qText = q.text.join(" ");
+    if (q.subs.length){
+      const known = q.subs.filter(s => s.points != null).reduce((a, s) => a + s.points, 0);
+      const missing = q.subs.filter(s => s.points == null);
+      let share = null;
+      if (missing.length && q.points != null){
+        share = Math.max(0, q.points - known) / missing.length;
+        share = Math.round(share * 2) / 2;
+        warnings.push(`בשאלה ${q.num} חילקתי את הניקוד בין הסעיפים שלא צוין להם ניקוד – כדאי לבדוק.`);
+      } else if (missing.length){
+        warnings.push(`בשאלה ${q.num} לא נמצא ניקוד לסעיפים ${missing.map(s => s.letter).join(", ")}.`);
+      }
+      const subSum = q.subs.reduce((a, s) => a + (s.points ?? share ?? 0), 0);
+      if (q.points != null && !missing.length && Math.abs(subSum - q.points) > 0.01)
+        warnings.push(`בשאלה ${q.num}: סכום הסעיפים (${subSum}) שונה מהניקוד של השאלה (${q.points}).`);
+      for (const s of q.subs){
+        const txt = s.text.join(" ");
+        items.push({ id:nid(), q:q.num, sub:s.letter, topic:"", level:guessLevel(txt + " " + (q.subs.length === 1 ? qText : "")), max:s.points ?? share ?? null, desc:txt.trim().slice(0, 80) });
+      }
+    } else {
+      if (q.points == null) warnings.push(`לשאלה ${q.num} לא נמצא ניקוד.`);
+      items.push({ id:nid(), q:q.num, sub:"", topic:"", level:guessLevel(qText), max:q.points, desc:qText.trim().slice(0, 80) });
+    }
+  }
+  // nothing had points at all → split 100 evenly
+  if (items.length && items.every(it => it.max == null)){
+    const per = Math.floor(100 / items.length);
+    items.forEach((it, i) => it.max = per + (i < 100 - per * items.length ? 1 : 0));
+    warnings.length = 0;
+    warnings.push("לא נמצא ניקוד במבחן – חילקתי 100 נקודות שווה בשווה. ניתן לעדכן בשורת \"ניקוד מרבי\".");
+  }
+  return { items, warnings, questions:qs.length };
+}
+/* thinking-level heuristic by instruction verbs */
+const LEVEL_RULES = [
+  { lvl:2, re:/(הסביר|הסבר|נמק|הוכיח|הוכח|מדוע|למה |האם |הראו ש|הראה ש|חקר|בדקו אם|בדוק אם|תנו דוגמה|תן דוגמה|הציעו|הצע |השוו|שערו|הכלילו|מצאו את כל|כמה דרכים|ייתכן|ייתכנו|עדי|דני טוען|טוען ש|צדק|שגיאה|טעות|בעיה|בעית)/ },
+  { lvl:0, re:/(סמנו|סמן |הקיפו|הקף |השלימו|השלם |כתבו את השם|מה השם|מה שם|הגדירו|הגדר |זהו |זהה |התאימו|התאם |העתיקו|נכון או לא|נכון\/לא|רשמו את|קראו|מהו ה|מהי ה|איזה מ|איזו מ|מי מ)/ },
+  { lvl:1, re:/(חשב|פתר|מצא|שרטט|סדר|בנו|הציב|כנס|פשט|הרחיב|צייר|מדד|השוו בין|קבע)/ }
+];
+function guessLevel(text){
+  const n = state.levels.length;
+  for (const r of LEVEL_RULES) if (r.re.test(text)) return state.levels[Math.min(r.lvl, n - 1)];
+  return state.levels[Math.min(1, n - 1)];
+}
+
+/* ---------- file → text ---------- */
+async function fileToText(file){
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".docx")){
+    await loadLib("mammoth");
+    const r = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() });
+    return htmlToLines(r.value);
+  }
+  if (name.endsWith(".doc")) throw new Error("קבצי ‎.doc‎ ישנים לא נתמכים – שמרו את הקובץ ב-Word בתור ‎.docx‎ ונסו שוב.");
+  if (name.endsWith(".pdf")){
+    await loadLib("pdfjs");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = LIBS.pdfwork;
+    const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    const out = [];
+    for (let p = 1; p <= pdf.numPages; p++){
+      const page = await pdf.getPage(p);
+      const tc = await page.getTextContent();
+      const rows = new Map();
+      for (const it of tc.items){
+        if (!it.str || !it.str.trim()) continue;
+        const y = Math.round(it.transform[5] / 3) * 3;
+        if (!rows.has(y)) rows.set(y, []);
+        rows.get(y).push({ x: it.transform[4], s: it.str });
+      }
+      [...rows.entries()].sort((a, b) => b[0] - a[0]).forEach(([, arr]) => {
+        // RTL page: right-most chunk first
+        arr.sort((a, b) => b.x - a.x);
+        out.push(arr.map(a => a.s).join(" "));
+      });
+    }
+    return out.join("\n");
+  }
+  return decodeText(await file.arrayBuffer());
+}
+// keep table cells as separate lines so "N נק'" in its own cell attaches to the right item
+function htmlToLines(html){
+  const div = document.createElement("div");
+  div.innerHTML = html.replace(/<\/(p|td|th|li|h\d|tr)>/g, "$&\n").replace(/<br\s*\/?>/g, "\n");
+  return div.textContent;
+}
+function decodeText(buf){
+  try { return new TextDecoder("utf-8", { fatal:true }).decode(buf).replace(/^﻿/, ""); }
+  catch(e){ return new TextDecoder("windows-1255").decode(buf); }
+}
+
+/* ---------- step 1 handlers ---------- */
+function applyParsed(res, source){
+  if (!res.items.length){
+    setMsg("#testMsg", "bad", "לא זיהיתי שאלות. ודאו שכל שאלה מתחילה ב\"שאלה 1\", \"שאלה 2\"… (או \"1.\", \"2.\"), וסעיפים ב\"א.\", \"ב.\". אפשר גם להדביק את הטקסט ולתקן, או לבנות מיפוי ריק ידנית.");
+    return;
+  }
+  state.items = res.items;
+  // keep students but drop scores for columns that no longer exist
+  const ids = new Set(state.items.map(i => i.id));
+  state.students.forEach(s => { for (const k in s.scores) if (!ids.has(k)) delete s.scores[k]; });
+  const total = sumMax();
+  let html = `✓ זוהו <b>${res.questions}</b> שאלות ו-<b>${res.items.length}</b> עמודות ניקוד${source ? " מתוך " + esc(source) : ""}. סך הניקוד: <b>${fmt(total)}</b>.`;
+  if (Math.abs(total - 100) > 0.01) html += ` <br>⚠ הסכום אינו 100 – הציון יחושב באחוזים מתוך ${fmt(total)}.`;
+  if (res.warnings.length) html += "<br>" + res.warnings.map(w => "⚠ " + esc(w)).join("<br>");
+  setMsg("#testMsg", res.warnings.length || Math.abs(total - 100) > 0.01 ? "warn" : "ok", html);
+  if (!state.title && source) state.title = source.replace(/\.[^.]+$/, "");
+  render(); save();
+  $("#step3").scrollIntoView({ behavior:"smooth", block:"start" });
+}
+async function handleTestFile(file){
+  if (!file) return;
+  setMsg("#testMsg", "info", '<span class="spinner"></span> קורא את ' + esc(file.name) + "…");
+  try {
+    const text = await fileToText(file);
+    $("#testText").value = text.trim();
+    applyParsed(parseTest(text), file.name);
+  } catch(e){ setMsg("#testMsg", "bad", esc(e.message || e)); }
+}
+
+/* =========================================================
+   STUDENT LIST
+   ========================================================= */
+async function handleStudentFile(file){
+  if (!file) return;
+  setMsg("#stuMsg", "info", '<span class="spinner"></span> קורא את ' + esc(file.name) + "…");
+  try {
+    const name = file.name.toLowerCase();
+    let rows;
+    if (name.endsWith(".txt")){
+      rows = decodeText(await file.arrayBuffer()).split(/\r?\n/).map(l => l.split(/\t|,|;/));
+    } else {
+      await loadLib("xlsx");
+      let wb;
+      if (name.endsWith(".csv")) wb = XLSX.read(decodeText(await file.arrayBuffer()), { type:"string" });
+      else wb = XLSX.read(await file.arrayBuffer(), { type:"array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      rows = XLSX.utils.sheet_to_json(ws, { header:1, raw:false, defval:"" });
+    }
+    applyStudents(extractStudents(rows), file.name);
+  } catch(e){ setMsg("#stuMsg", "bad", esc(e.message || e)); }
+}
+function extractStudents(rows){
+  rows = rows.map(r => (r || []).map(c => String(c ?? "").trim())).filter(r => r.some(Boolean));
+  if (!rows.length) return [];
+  const width = Math.max(...rows.map(r => r.length));
+  // header row: first row (within 6) with a cell containing "שם"
+  let h = -1;
+  for (let i = 0; i < Math.min(6, rows.length); i++) if (rows[i].some(c => /שם|name/i.test(c) && c.length < 30)) { h = i; break; }
+  let full = -1, first = -1, last = -1, idc = -1;
+  if (h >= 0){
+    rows[h].forEach((c, j) => {
+      if (/פרטי|first/i.test(c)) first = j;
+      else if (/משפחה|last/i.test(c)) last = j;
+      else if (/ת\.?\s*ז|תעודת|זהות|זיהוי|^id$|מס['.]?\s*תלמיד/i.test(c)) idc = j;
+      else if (full < 0 && /שם|name/i.test(c)) full = j;
+    });
+  }
+  const body = rows.slice(h + 1);
+  const isNameish = c => c && /[A-Za-zא-ת]/.test(c) && !/^\d+$/.test(c);
+  if (full < 0 && first < 0 && last < 0){
+    // best text column
+    let best = -1, bestScore = 0;
+    for (let j = 0; j < width; j++){
+      const sc = body.filter(r => isNameish(r[j])).length;
+      if (sc > bestScore){ bestScore = sc; best = j; }
+    }
+    full = best;
+  }
+  if (idc < 0){
+    for (let j = 0; j < width; j++){
+      if ([full, first, last].includes(j)) continue;
+      const n = body.filter(r => /^\d{5,9}$/.test(r[j] || "")).length;
+      if (n >= Math.max(1, body.length * 0.6)){ idc = j; break; }
+    }
+  }
+  const out = [];
+  for (const r of body){
+    let name = full >= 0 ? r[full] : [r[first] || "", r[last] || ""].join(" ").trim();
+    if (full >= 0 && (first >= 0 || last >= 0) && !name) name = [r[first] || "", r[last] || ""].join(" ").trim();
+    name = (name || "").replace(/\s+/g, " ").trim();
+    if (!name || /^(סה"?כ|ממוצע|total)/i.test(name)) continue;
+    if (/^\d+$/.test(name)) continue;
+    out.push({ id:nid(), name, sid: idc >= 0 ? (r[idc] || "") : "", scores:{} });
+  }
+  return out;
+}
+function applyStudents(list, source){
+  if (!list.length){ setMsg("#stuMsg", "bad", "לא נמצאו שמות בקובץ. נסו קובץ שבו עמודה אחת מכילה את שמות התלמידים (רצוי עם כותרת \"שם\")."); return; }
+  state.students = list;
+  setMsg("#stuMsg", "ok", `✓ נטענו <b>${list.length}</b> תלמידים${source ? " מתוך " + esc(source) : ""}. נוצרה שורה לכל תלמיד – אפשר להוסיף או למחוק שורות חופשי.`);
+  render(); save();
+}
+function defaultStudents(){
+  state.students = blankStudents(DEFAULT_ROWS);
+  setMsg("#stuMsg", "info", DEFAULT_ROWS_NOTE);
+  render(); save();
+}
+
+/* =========================================================
+   TABLE
+   ========================================================= */
+const sumMax = () => state.items.reduce((a, it) => a + (+it.max || 0), 0);
+const fmt = n => (n == null || n === "" || isNaN(n)) ? "" : (Math.round(n * 10) / 10).toString();
+function studentTotal(s){
+  let any = false, t = 0;
+  for (const it of state.items){ const v = s.scores[it.id]; if (v !== "" && v != null && !isNaN(v)){ any = true; t += +v; } }
+  return any ? t : null;
+}
+function studentGrade(s){
+  const t = studentTotal(s), m = sumMax();
+  return t == null || !m ? null : Math.round(t / m * 100);
+}
+function levelIdx(l){ return state.levels.indexOf(l); }
+
+function render(){
+  $("#titleInput").value = state.title || "";
+  $("#showTopic").checked = !!state.showTopic;
+  $("#showSid").checked = !!state.showSid;
+  $("#levelsInput").value = state.levels.join(", ");
+  const T = $("#mapTable");
+  const its = state.items;
+  const sid = state.showSid;
+  const lead = sid ? 3 : 2; // idx, name, [sid]
+  // group question spans
+  let h = "<thead><tr>" + headLead("שאלה");
+  its.forEach((it, i) => h += `<th class="qh lvl-${levelIdx(it.level)}"><input data-f="q" data-i="${i}" value="${esc(it.q)}" aria-label="מספר שאלה"></th>`);
+  h += `<th rowspan="${state.showTopic ? 5 : 4}">סה״כ</th><th rowspan="${state.showTopic ? 5 : 4}">ציון</th></tr>`;
+  h += "<tr>" + headLead("סעיף");
+  its.forEach((it, i) => h += `<th class="lvl-${levelIdx(it.level)}"><input data-f="sub" data-i="${i}" value="${esc(it.sub)}" placeholder="—" aria-label="סעיף"></th>`);
+  h += "</tr>";
+  if (state.showTopic){
+    h += "<tr>" + headLead("נושא");
+    its.forEach((it, i) => h += `<th class="lvl-${levelIdx(it.level)}"><input data-f="topic" data-i="${i}" value="${esc(it.topic)}" placeholder="נושא" style="min-width:80px" aria-label="נושא"></th>`);
+    h += "</tr>";
+  }
+  h += "<tr>" + headLead("רמת חשיבה");
+  its.forEach((it, i) => {
+    const opts = state.levels.concat(state.levels.includes(it.level) || !it.level ? [] : [it.level]);
+    h += `<th class="lvl-${levelIdx(it.level)}"><select data-f="level" data-i="${i}" aria-label="רמת חשיבה">${opts.map(l => `<option${l === it.level ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></th>`;
+  });
+  h += "</tr>";
+  h += "<tr>" + headLead("ניקוד מרבי");
+  its.forEach((it, i) => h += `<th class="lvl-${levelIdx(it.level)}"><input type="number" min="0" step="0.5" data-f="max" data-i="${i}" value="${it.max ?? ""}" style="font-weight:800" aria-label="ניקוד מרבי"></th>`);
+  h += "</tr>";
+  // column tools row
+  h += `<tr><th class="rowhead" colspan="2" style="font-weight:400;color:var(--muted)">עמודה</th>${sid ? "<th></th>" : ""}`;
+  its.forEach((it, i) => h += `<th><div class="colbtns"><button class="mini add" data-act="insCol" data-i="${i}" title="הוספת עמודה אחרי">＋</button><button class="mini" data-act="delCol" data-i="${i}" title="מחיקת עמודה">✕</button></div></th>`);
+  h += `<th></th><th></th></tr></thead><tbody>`;
+  state.students.forEach((s, r) => {
+    const g = studentGrade(s), t = studentTotal(s);
+    h += `<tr data-r="${r}"><td class="idx">${r + 1} <button class="mini" data-act="delRow" data-r="${r}" title="מחיקת שורה">✕</button></td>`;
+    h += `<td class="name ${sid ? "" : ""}"><input data-s="name" data-r="${r}" value="${esc(s.name)}" placeholder="שם התלמיד/ה" aria-label="שם"></td>`;
+    if (sid) h += `<td class="sid"><input data-s="sid" data-r="${r}" value="${esc(s.sid)}" placeholder="מס׳ זיהוי" aria-label="מספר זיהוי"></td>`;
+    its.forEach(it => {
+      const v = s.scores[it.id] ?? "";
+      const over = v !== "" && it.max != null && (+v > +it.max || +v < 0);
+      h += `<td class="score"><input type="number" inputmode="decimal" min="0" max="${it.max ?? ""}" step="0.5" data-r="${r}" data-c="${it.id}" value="${v}" class="${over ? "over" : ""}" aria-label="ניקוד"></td>`;
+    });
+    h += `<td class="tot" data-tot="${r}">${fmt(t)}</td><td class="grade${g != null && g < 55 ? " low" : ""}" data-grade="${r}">${g ?? ""}</td></tr>`;
+  });
+  h += "</tbody><tfoot>" + footRows() + "</tfoot>";
+  T.innerHTML = h;
+  // name/sid header need idx col too: patch thead lead cells
+  renderChips();
+}
+function headLead(label){
+  // idx + name share the sticky label; sid column gets its own blank sticky cell
+  return `<th class="rowhead" colspan="2">${label}</th>` + (state.showSid ? "<th></th>" : "");
+}
+function footRows(){
+  const sid = state.showSid;
+  const lead = `<td colspan="${sid ? 3 : 2}" style="text-align:right;position:sticky;right:0;z-index:3">`;
+  let a = "<tr>" + lead + "ממוצע כיתה</td>", b = "<tr>" + lead + "אחוז הצלחה</td>";
+  for (const it of state.items){
+    const vals = state.students.map(s => s.scores[it.id]).filter(v => v !== "" && v != null && !isNaN(v)).map(Number);
+    const avg = vals.length ? vals.reduce((x, y) => x + y, 0) / vals.length : null;
+    const pct = avg != null && +it.max ? Math.round(avg / it.max * 100) : null;
+    a += `<td>${fmt(avg)}</td>`;
+    b += `<td class="${pct != null && pct < 55 ? "low" : ""}">${pct == null ? "" : pct + "%"}</td>`;
+  }
+  const tots = state.students.map(studentTotal).filter(v => v != null);
+  const grades = state.students.map(studentGrade).filter(v => v != null);
+  const avgT = tots.length ? tots.reduce((x, y) => x + y, 0) / tots.length : null;
+  const avgG = grades.length ? grades.reduce((x, y) => x + y, 0) / grades.length : null;
+  a += `<td>${fmt(avgT)}</td><td class="${avgG != null && avgG < 55 ? "low" : ""}">${fmt(avgG)}</td></tr>`;
+  b += `<td></td><td></td></tr>`;
+  return a + b;
+}
+function renderChips(){
+  const tot = sumMax();
+  let h = `<span class="chip ${Math.abs(tot - 100) < 0.01 ? "ok" : "bad"}">סך ניקוד: <b>${fmt(tot)}</b>${Math.abs(tot - 100) < 0.01 ? " ✓" : " (לא 100)"}</span>`;
+  h += `<span class="chip">סעיפים: <b>${state.items.length}</b></span>`;
+  h += `<span class="chip">תלמידים: <b>${state.students.length}</b></span>`;
+  const byL = {};
+  state.items.forEach(it => byL[it.level] = (byL[it.level] || 0) + (+it.max || 0));
+  for (const l of Object.keys(byL)) h += `<span class="chip">${esc(l)}: <b>${fmt(byL[l])}</b> נק׳ (${tot ? Math.round(byL[l] / tot * 100) : 0}%)</span>`;
+  $("#chips").innerHTML = h;
+}
+function refreshRow(r){
+  const s = state.students[r];
+  const t = studentTotal(s), g = studentGrade(s);
+  const tc = document.querySelector(`[data-tot="${r}"]`), gc = document.querySelector(`[data-grade="${r}"]`);
+  if (tc) tc.textContent = fmt(t);
+  if (gc){ gc.textContent = g ?? ""; gc.classList.toggle("low", g != null && g < 55); }
+  $("#mapTable tfoot").innerHTML = footRows();
+}
+function refreshAllComputed(){
+  state.students.forEach((s, r) => {
+    const t = studentTotal(s), g = studentGrade(s);
+    const tc = document.querySelector(`[data-tot="${r}"]`), gc = document.querySelector(`[data-grade="${r}"]`);
+    if (tc) tc.textContent = fmt(t);
+    if (gc){ gc.textContent = g ?? ""; gc.classList.toggle("low", g != null && g < 55); }
+  });
+  $("#mapTable tfoot").innerHTML = footRows();
+  renderChips();
+}
+
+/* table events (delegated) */
+$("#mapTable").addEventListener("input", e => {
+  const el = e.target;
+  if (el.dataset.f){
+    const it = state.items[+el.dataset.i];
+    if (el.dataset.f === "max"){ it.max = el.value === "" ? null : +el.value; refreshAllComputed(); }
+    else it[el.dataset.f] = el.value;
+  } else if (el.dataset.s){
+    state.students[+el.dataset.r][el.dataset.s] = el.value;
+  } else if (el.dataset.c){
+    const r = +el.dataset.r, s = state.students[r];
+    if (el.value === "") delete s.scores[el.dataset.c]; else s.scores[el.dataset.c] = +el.value;
+    const it = state.items.find(i => i.id === el.dataset.c);
+    el.classList.toggle("over", el.value !== "" && it && it.max != null && (+el.value > +it.max || +el.value < 0));
+    refreshRow(r);
+  }
+  save();
+});
+$("#mapTable").addEventListener("change", e => {
+  if (e.target.dataset.f === "level"){ render(); save(); }
+});
+$("#mapTable").addEventListener("click", e => {
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  const act = b.dataset.act;
+  if (act === "delRow"){ state.students.splice(+b.dataset.r, 1); }
+  if (act === "delCol"){
+    const it = state.items[+b.dataset.i];
+    const has = state.students.some(s => s.scores[it.id] != null);
+    if (has && !confirm(`למחוק את עמודת שאלה ${it.q}${it.sub ? it.sub : ""}? ציונים שהוזנו בה יימחקו.`)) return;
+    state.items.splice(+b.dataset.i, 1);
+  }
+  if (act === "insCol") insertColumn(+b.dataset.i + 1);
+  render(); save();
+});
+// Enter moves down in score columns (fast grading)
+$("#mapTable").addEventListener("keydown", e => {
+  if (e.key !== "Enter" || !e.target.matches("input")) return;
+  const el = e.target, td = el.closest("td,th"), tr = el.closest("tr");
+  if (!td || !tr) return;
+  const idx = [...tr.children].indexOf(td);
+  const next = tr.nextElementSibling && tr.nextElementSibling.children[idx];
+  const inp = next && next.querySelector("input");
+  if (inp){ e.preventDefault(); inp.focus(); inp.select && inp.select(); }
+});
+function insertColumn(at){
+  const prev = state.items[at - 1];
+  let q = prev ? prev.q : "1", sub = "";
+  if (prev && prev.sub){
+    const i = HEB_LETTERS.indexOf(prev.sub);
+    sub = i >= 0 && i < HEB_LETTERS.length - 1 ? HEB_LETTERS[i + 1] : "";
+  } else if (prev){ q = String((parseInt(prev.q) || 0) + 1); }
+  state.items.splice(at, 0, { id:nid(), q, sub, topic:"", level:state.levels[Math.min(1, state.levels.length - 1)], max:null, desc:"" });
+}
+
+/* =========================================================
+   EXPORT
+   ========================================================= */
+function colLetter(n){ let s = ""; n++; while (n > 0){ const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
+function fileBase(){ return (state.title || "מבחן").replace(/[\\/:*?"<>|]+/g, " ").trim(); }
+function download(blob, name){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+}
+function checkBeforeExport(){
+  if (!state.items.length){ setMsg("#expMsg", "bad", "אין עדיין סעיפים במיפוי. העלו מבחן בשלב 1 או הוסיפו עמודות ידנית."); return false; }
+  return true;
+}
+
+async function exportXlsx(){
+  if (!checkBeforeExport()) return;
+  setMsg("#expMsg", "info", '<span class="spinner"></span> מכין קובץ אקסל…');
+  try {
+    await loadLib("exceljs");
+    const wb = buildWorkbook();
+    const buf = await wb.xlsx.writeBuffer();
+    download(new Blob([buf], { type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `מיפוי - ${fileBase()}.xlsx`);
+    setMsg("#expMsg", "ok", "✓ הקובץ הורד. בגיליון \"מיפוי\" ממלאים רק את התאים הצהובים; הסיכום מתעדכן לבד.");
+  } catch(e){ console.error(e); setMsg("#expMsg", "bad", "שגיאה ביצירת הקובץ: " + esc(e.message || e)); }
+}
+
+function buildWorkbook(){
+  const its = state.items, studs = state.students, sid = state.showSid, topic = state.showTopic;
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "מיפוי מבחן אוטומטי";
+  wb.calcProperties.fullCalcOnLoad = true;
+  const ws = wb.addWorksheet("מיפוי", { views:[{ rightToLeft:true, state:"frozen", xSplit: sid ? 3 : 2, ySplit: 0 }] });
+  const font = { name:"Arial", size:11 };
+  const bold = { name:"Arial", size:11, bold:true };
+  const thin = { style:"thin", color:{ argb:"FF9AA4B2" } };
+  const border = { top:thin, bottom:thin, left:thin, right:thin };
+  const fill = c => ({ type:"pattern", pattern:"solid", fgColor:{ argb:c } });
+  const YELLOW = fill("FFFFF2CC"), HEAD = fill("FFE7ECF5"), GREY = fill("FFF2F2F2");
+  const LVL = ["FFDDEBFF", "FFE2F4E2", "FFF9E1EE", "FFFFEBD2"];
+
+  const c0 = sid ? 3 : 2;                 // first item column (0-based)
+  const cTot = c0 + its.length, cGrade = cTot + 1;
+  const L = i => colLetter(i);
+  const firstItem = L(c0), lastItem = L(cTot - 1);
+  const nCols = cGrade + 1;
+
+  // title + note
+  ws.mergeCells(1, 1, 1, nCols);
+  const tc = ws.getCell(1, 1);
+  tc.value = "מיפוי – " + (state.title || "מבחן");
+  tc.font = { name:"Arial", size:14, bold:true }; tc.alignment = { horizontal:"center" };
+  ws.mergeCells(2, 1, 2, nCols);
+  const nc = ws.getCell(2, 1);
+  nc.value = "יש למלא רק את התאים הצהובים (שמות וניקוד). סה״כ, ציון, ממוצעים וגיליון הסיכום מחושבים אוטומטית. שורות תלמידים שלא בשימוש אפשר למחוק.";
+  nc.font = { name:"Arial", size:10, italic:true, color:{ argb:"FF555555" } }; nc.alignment = { horizontal:"center", wrapText:true };
+  ws.getRow(2).height = 30;
+
+  const headerLabels = ["שאלה", "סעיף"].concat(topic ? ["נושא"] : []).concat(["רמת חשיבה", "תיאור", "ניקוד מרבי"]);
+  const R = {}; let r = 4;
+  headerLabels.forEach(lbl => R[lbl] = r++);
+  const rFirst = r, rLast = r + studs.length - 1;
+  const rAvg = rLast + 2, rPct = rLast + 3;
+
+  // header label cells (merged across lead columns)
+  for (const lbl of headerLabels){
+    ws.mergeCells(R[lbl], 1, R[lbl], c0);
+    const c = ws.getCell(R[lbl], 1);
+    c.value = lbl; c.font = bold; c.fill = HEAD; c.alignment = { horizontal:"right", vertical:"middle" };
+    for (let k = 1; k <= c0; k++) ws.getCell(R[lbl], k).border = border;
+  }
+  // student column headers
+  const hdrRow = R["ניקוד מרבי"];
+  // item header cells
+  its.forEach((it, j) => {
+    const col = c0 + j + 1;
+    const lf = fill(LVL[Math.max(0, levelIdx(it.level)) % LVL.length]);
+    const set = (row, val, f) => { const c = ws.getCell(row, col); c.value = val; c.font = f || font; c.fill = lf; c.border = border; c.alignment = { horizontal:"center", vertical:"middle", wrapText:true }; };
+    set(R["שאלה"], isNaN(it.q) || it.q === "" ? it.q : +it.q, bold);
+    set(R["סעיף"], it.sub || "—");
+    if (topic) set(R["נושא"], it.topic || "");
+    set(R["רמת חשיבה"], it.level || "");
+    set(R["תיאור"], it.desc || "", { name:"Arial", size:9 });
+    set(R["ניקוד מרבי"], it.max == null ? null : +it.max, bold);
+  });
+  ws.getRow(R["תיאור"]).height = 45;
+  // merge "שאלה" across consecutive equal question numbers
+  for (let j = 0; j < its.length;){
+    let k = j; while (k + 1 < its.length && String(its[k + 1].q) === String(its[j].q)) k++;
+    if (k > j) ws.mergeCells(R["שאלה"], c0 + j + 1, R["שאלה"], c0 + k + 1);
+    j = k + 1;
+  }
+  // total / grade headers
+  [["סה״כ", cTot], ["ציון", cGrade]].forEach(([lbl, ci]) => {
+    ws.mergeCells(R["שאלה"], ci + 1, hdrRow - 1, ci + 1);
+    const c = ws.getCell(R["שאלה"], ci + 1);
+    c.value = lbl; c.font = bold; c.fill = HEAD; c.alignment = { horizontal:"center", vertical:"middle" };
+    for (let rr = R["שאלה"]; rr < hdrRow; rr++) ws.getCell(rr, ci + 1).border = border;
+  });
+  const tm = ws.getCell(hdrRow, cTot + 1);
+  tm.value = { formula:`SUM(${firstItem}${hdrRow}:${lastItem}${hdrRow})`, result: sumMax() };
+  tm.font = bold; tm.fill = HEAD; tm.border = border; tm.alignment = { horizontal:"center" };
+  const gm = ws.getCell(hdrRow, cGrade + 1); gm.value = 100; gm.font = bold; gm.fill = HEAD; gm.border = border; gm.alignment = { horizontal:"center" };
+  // the lead columns' captions for student rows go in the row just above the students? use "ניקוד מרבי" row label is merged; add a caption row
+  // student rows
+  const capRow = ws.getRow(rFirst - 1);
+  studs.forEach((s, i) => {
+    const row = rFirst + i;
+    const set = (col, val, f, fl) => { const c = ws.getCell(row, col); c.value = val; c.font = f || font; c.border = border; if (fl) c.fill = fl; c.alignment = { horizontal: col === 2 ? "right" : "center" }; return c; };
+    set(1, i + 1, font, GREY);
+    set(2, s.name || null, font, YELLOW);
+    if (sid) set(3, s.sid ? (/^\d+$/.test(s.sid) && s.sid.length < 15 && s.sid[0] !== "0" ? +s.sid : s.sid) : null, font, YELLOW);
+    its.forEach((it, j) => { const v = s.scores[it.id]; set(c0 + j + 1, v == null || v === "" ? null : +v, font, YELLOW); });
+    const t = studentTotal(s), g = studentGrade(s);
+    set(cTot + 1, { formula:`IF(COUNT(${firstItem}${row}:${lastItem}${row})=0,"",SUM(${firstItem}${row}:${lastItem}${row}))`, result: t == null ? "" : t }, bold, GREY);
+    set(cGrade + 1, { formula:`IF(${L(cTot)}${row}="","",ROUND(${L(cTot)}${row}/$${L(cTot)}$${hdrRow}*100,0))`, result: g == null ? "" : g }, bold, GREY);
+  });
+  // validation on score cells
+  if (studs.length) its.forEach((it, j) => {
+    if (it.max == null) return;
+    const colL = L(c0 + j);
+    for (let row = rFirst; row <= rLast; row++){
+      ws.getCell(`${colL}${row}`).dataValidation = { type:"decimal", operator:"between", allowBlank:true, formulae:[0, +it.max], showErrorMessage:true, errorTitle:"ניקוד לא תקין", error:`הניקוד בסעיף זה הוא בין 0 ל-${it.max}` };
+    }
+  });
+  // column captions above student rows (use the cells in the row before students = hdrRow, lead part merged → put in separate row?)
+  // averages
+  const avgSet = (row, label) => {
+    ws.mergeCells(row, 1, row, c0);
+    const c = ws.getCell(row, 1); c.value = label; c.font = bold; c.fill = HEAD; c.alignment = { horizontal:"right" };
+    for (let k = 1; k <= c0; k++) ws.getCell(row, k).border = border;
+  };
+  avgSet(rAvg, "ממוצע כיתה"); avgSet(rPct, "אחוז הצלחה");
+  its.concat([{ max:null, _tot:true }, { _grade:true }]).forEach((it, j) => {
+    const colL = L(c0 + j);
+    const a = ws.getCell(rAvg, c0 + j + 1);
+    a.value = studs.length ? { formula:`IFERROR(ROUND(AVERAGE(${colL}${rFirst}:${colL}${rLast}),1),"")` } : "";
+    a.font = bold; a.fill = HEAD; a.border = border; a.alignment = { horizontal:"center" };
+    const p = ws.getCell(rPct, c0 + j + 1);
+    p.value = it._grade ? "" : { formula:`IFERROR(${colL}${rAvg}/${colL}${hdrRow},"")` };
+    p.numFmt = "0%"; p.font = bold; p.fill = HEAD; p.border = border; p.alignment = { horizontal:"center" };
+  });
+  // conditional formatting: grade < 55, success < 55%
+  const red = { font:{ color:{ argb:"FFC00000" }, bold:true }, fill:{ type:"pattern", pattern:"solid", bgColor:{ argb:"FFFDE2E2" } } };
+  if (studs.length) ws.addConditionalFormatting({ ref:`${L(cGrade)}${rFirst}:${L(cGrade)}${rLast}`,
+    rules:[{ type:"expression", formulae:[`AND(${L(cGrade)}${rFirst}<>"",${L(cGrade)}${rFirst}<55)`], style:red }] });
+  ws.addConditionalFormatting({ ref:`${firstItem}${rPct}:${L(cTot)}${rPct}`,
+    rules:[{ type:"expression", formulae:[`AND(${firstItem}${rPct}<>"",${firstItem}${rPct}<0.55)`], style:red }] });
+  // widths
+  ws.getColumn(1).width = 5; ws.getColumn(2).width = 24; if (sid) ws.getColumn(3).width = 13;
+  for (let j = 0; j < its.length; j++) ws.getColumn(c0 + j + 1).width = 9;
+  ws.getColumn(cTot + 1).width = 9; ws.getColumn(cGrade + 1).width = 9;
+  // captions for lead columns placed in the "ניקוד מרבי" row would collide with merged label → put them in the "תיאור" row instead? Keep: unmerge last header and write captions.
+  ws.unMergeCells(hdrRow, 1, hdrRow, c0);
+  ws.getCell(hdrRow, 1).value = "מס׳";
+  ws.getCell(hdrRow, 2).value = "שם התלמיד/ה  |  ניקוד מרבי ←";
+  if (sid) ws.getCell(hdrRow, 3).value = "מס׳ זיהוי";
+  for (let k = 1; k <= c0; k++){ const c = ws.getCell(hdrRow, k); c.font = bold; c.fill = HEAD; c.border = border; c.alignment = { horizontal: k === 2 ? "right" : "center" }; }
+  ws.views = [{ rightToLeft:true, state:"frozen", xSplit:c0, ySplit:hdrRow }];
+  ws.pageSetup = { orientation:"landscape", fitToPage:true, fitToWidth:1, fitToHeight:0 };
+
+  /* ----- summary sheet ----- */
+  const ss = wb.addWorksheet("סיכום", { views:[{ rightToLeft:true }] });
+  ss.getColumn(1).width = 22; [2,3,4,5].forEach(c => ss.getColumn(c).width = 15);
+  const M = `'מיפוי'!`;
+  const hdrRng = row => `${M}$${firstItem}$${row}:$${lastItem}$${row}`;
+  let sr = 1;
+  const title = t => { const c = ss.getCell(sr, 1); c.value = t; c.font = { name:"Arial", size:13, bold:true }; sr++; };
+  const header = arr => { arr.forEach((v, i) => { const c = ss.getCell(sr, i + 1); c.value = v; c.font = bold; c.fill = HEAD; c.border = border; c.alignment = { horizontal:"center" }; }); sr++; };
+  const groupTable = (label, keyRow, keys) => {
+    title("לפי " + label); header([label, "ניקוד מרבי", "אחוז מהמבחן", "ממוצע כיתה", "אחוז הצלחה"]);
+    const start = sr;
+    keys.forEach(k => {
+      const cells = [k,
+        { formula:`SUMIF(${hdrRng(keyRow)},A${sr},${hdrRng(hdrRow)})` },
+        { formula:`IFERROR(B${sr}/${M}$${L(cTot)}$${hdrRow},"")` },
+        { formula:`SUMIF(${hdrRng(keyRow)},A${sr},${hdrRng(rAvg)})` },
+        { formula:`IFERROR(D${sr}/B${sr},"")` }];
+      cells.forEach((v, i) => { const c = ss.getCell(sr, i + 1); c.value = v; c.font = font; c.border = border; c.alignment = { horizontal: i ? "center" : "right" }; if (i === 2 || i === 4) c.numFmt = "0%"; if (i === 3) c.numFmt = "0.0"; });
+      sr++;
+    });
+    if (keys.length) ss.addConditionalFormatting({ ref:`E${start}:E${sr - 1}`, rules:[{ type:"expression", formulae:[`AND(E${start}<>"",E${start}<0.55)`], style:red }] });
+    sr++;
+  };
+  const lvls = [...new Set(state.levels.concat(its.map(i => i.level)).filter(Boolean))];
+  groupTable("רמת חשיבה", R["רמת חשיבה"], lvls);
+  if (topic){
+    const tps = [...new Set(its.map(i => i.topic).filter(Boolean))];
+    if (tps.length) groupTable("נושא", R["נושא"], tps);
+  }
+  title("התפלגות ציונים"); header(["טווח", "מספר תלמידים", "אחוז"]);
+  const G = `${M}$${L(cGrade)}$${rFirst}:$${L(cGrade)}$${Math.max(rLast, rFirst)}`;
+  const distStart = sr;
+  [["90–100", 90, 101], ["80–89", 80, 90], ["70–79", 70, 80], ["55–69", 55, 70], ["מתחת ל-55", -1, 55]].forEach(([lbl, lo, hi]) => {
+    const vals = [lbl, { formula:`COUNTIFS(${G},">="&${lo},${G},"<"&${hi})` }, { formula:`IFERROR(B${sr}/SUM($B$${distStart}:$B$${distStart + 4}),"")` }];
+    vals.forEach((v, i) => { const c = ss.getCell(sr, i + 1); c.value = v; c.font = font; c.border = border; c.alignment = { horizontal: i ? "center" : "right" }; if (i === 2) c.numFmt = "0%"; });
+    sr++;
+  });
+  sr++;
+  [["מספר נבחנים", `COUNT(${G})`, "0"], ["ממוצע ציון", `IFERROR(AVERAGE(${G}),"")`, "0.0"], ["חציון", `IFERROR(MEDIAN(${G}),"")`, "0"]].forEach(([lbl, f, nf]) => {
+    const a = ss.getCell(sr, 1); a.value = lbl; a.font = bold; a.border = border; a.fill = HEAD;
+    const b = ss.getCell(sr, 2); b.value = { formula:f }; b.font = bold; b.border = border; b.numFmt = nf; b.alignment = { horizontal:"center" };
+    sr++;
+  });
+  return wb;
+}
+
+function exportCsv(){
+  if (!checkBeforeExport()) return;
+  const its = state.items, sid = state.showSid;
+  const lead = n => Array(sid ? 3 : 2).fill("").map((_, i) => i === 0 ? n : "");
+  const rows = [];
+  rows.push(lead("שאלה").concat(its.map(i => i.q), ["סה״כ", "ציון"]));
+  rows.push(lead("סעיף").concat(its.map(i => i.sub || "—"), ["", ""]));
+  if (state.showTopic) rows.push(lead("נושא").concat(its.map(i => i.topic), ["", ""]));
+  rows.push(lead("רמת חשיבה").concat(its.map(i => i.level), ["", ""]));
+  rows.push(["מס׳", "שם התלמיד/ה"].concat(sid ? ["מס׳ זיהוי"] : [], its.map(i => i.max ?? ""), [fmt(sumMax()), 100]));
+  state.students.forEach((s, r) => rows.push([r + 1, s.name].concat(sid ? [s.sid] : [], its.map(i => s.scores[i.id] ?? ""), [fmt(studentTotal(s)), studentGrade(s) ?? ""])));
+  const q = v => { v = String(v ?? ""); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const csv = "﻿" + rows.map(r => r.map(q).join(",")).join("\r\n");
+  download(new Blob([csv], { type:"text/csv;charset=utf-8" }), `מיפוי - ${fileBase()}.csv`);
+  setMsg("#expMsg", "ok", "✓ קובץ CSV הורד (ערכים בלבד, בלי נוסחאות ועיצוב – לאקסל מלא בחרו \"הורדת Excel\").");
+}
+
+/* =========================================================
+   WIRING
+   ========================================================= */
+function wireDrop(dropSel, inputSel, handler){
+  const d = $(dropSel), inp = $(inputSel);
+  d.addEventListener("click", () => inp.click());
+  d.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " "){ e.preventDefault(); inp.click(); } });
+  inp.addEventListener("change", () => { handler(inp.files[0]); inp.value = ""; });
+  ["dragenter", "dragover"].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.remove("over"); }));
+  d.addEventListener("drop", e => handler(e.dataTransfer.files[0]));
+}
+wireDrop("#testDrop", "#testFile", handleTestFile);
+wireDrop("#stuDrop", "#stuFile", handleStudentFile);
+
+$("#parseBtn").onclick = () => {
+  const t = $("#testText").value;
+  if (!t.trim()){ setMsg("#testMsg", "warn", "הדביקו קודם את טקסט המבחן."); return; }
+  applyParsed(parseTest(t), "");
+};
+const SAMPLE = `מבחן מחצית א' במתמטיקה – כיתה ז'
+שאלה 1 (12 נקודות)
+א. חשבו והראו את דרך הפתרון: (−7) + (+12) = 6 נק'
+ב. סדרו מהקטן לגדול: 3, −5, 0, −1 6 נק'
+שאלה 2 (10 נקודות)
+מסומנים המספרים A ו-B על ציר המספרים.
+א. סמנו על הציר את הנקודה C = −2 4 נק'
+ב. הסבירו במילים או בעזרת תרגיל: האם המכפלה A·B חיובית? 6 נק'
+שאלה 3 (8 נקודות)
+פתרו את המשוואה: 3x + 5 = 20
+שאלה 4 (20 נקודות)
+א. מצאו את גודל הזווית ∢ABC 7 נק'
+ב. חשבו את ∢DBE 7 נק'
+ג. דני טוען שהזוויות שוות. האם הוא צודק? נמקו 6 נק'
+שאלה 5 (15 נקודות)
+א. השלימו את הטבלה 5 נק'
+ב. שרטטו את הנקודות במערכת הצירים 5 נק'
+ג. הציעו נקודה נוספת שנמצאת על אותו קו ישר 5 נק'
+שאלה 6 (15 נקודות)
+א. חשבו: |−8| − |+3| 7 נק'
+ב. הוכיחו שסכום של מספר והנגדי שלו תמיד אפס 8 נק'
+שאלה 7 (20 נקודות)
+א. פשטו את הביטוי 2a + 3b − a + 4b 10 נק'
+ב. הציבו a = −1, b = 2 וחשבו את ערך הביטוי 10 נק'
+בהצלחה!`;
+$("#sampleBtn").onclick = () => { $("#testText").value = SAMPLE; state.title = "מבחן לדוגמה"; applyParsed(parseTest(SAMPLE), ""); };
+$("#emptyBtn").onclick = () => {
+  state.items = [];
+  for (let i = 1; i <= 5; i++) state.items.push({ id:nid(), q:String(i), sub:"", topic:"", level:state.levels[Math.min(1, state.levels.length - 1)], max:20, desc:"" });
+  setMsg("#testMsg", "info", "נוצר מיפוי ריק עם 5 שאלות של 20 נקודות. ערכו את מספרי השאלות, הסעיפים והניקוד ישירות בכותרות הטבלה.");
+  render(); save();
+};
+$("#stuPasteBtn").onclick = () => {
+  const t = $("#stuText").value;
+  if (!t.trim()){ setMsg("#stuMsg", "warn", "הדביקו קודם שמות – שם בכל שורה."); return; }
+  applyStudents(extractStudents(t.split(/\r?\n/).map(l => l.split(/\t|,|;/))), "");
+};
+$("#stuDefaultBtn").onclick = defaultStudents;
+$("#addRowBtn").onclick = () => { state.students.push(...blankStudents(1)); render(); save(); };
+$("#add5Btn").onclick = () => { state.students.push(...blankStudents(5)); render(); save(); };
+$("#addColBtn").onclick = () => { insertColumn(state.items.length); render(); save(); };
+$("#trimBtn").onclick = () => {
+  const before = state.students.length;
+  state.students = state.students.filter(s => s.name.trim() || s.sid.trim() || Object.keys(s.scores).length);
+  setMsg("#stuMsg", "info", `נמחקו ${before - state.students.length} שורות ריקות.`);
+  render(); save();
+};
+$("#titleInput").oninput = e => { state.title = e.target.value; save(); };
+$("#showTopic").onchange = e => { state.showTopic = e.target.checked; render(); save(); };
+$("#showSid").onchange = e => { state.showSid = e.target.checked; render(); save(); };
+$("#levelsInput").onchange = e => {
+  const l = e.target.value.split(/[,،]/).map(s => s.trim()).filter(Boolean);
+  if (l.length){ state.levels = l; render(); save(); }
+};
+$("#xlsxBtn").onclick = exportXlsx;
+$("#csvBtn").onclick = exportCsv;
+$("#resetBtn").onclick = () => {
+  if (!confirm("למחוק את כל המיפוי והתלמידים ולהתחיל מחדש?")) return;
+  state = freshState(); $("#testText").value = ""; $("#stuText").value = "";
+  ["#testMsg", "#expMsg"].forEach(id => setMsg(id, "", ""));
+  setMsg("#stuMsg", "info", DEFAULT_ROWS_NOTE);
+  render(); save();
+};
+
+/* init */
+if (restore()){
+  setMsg("#testMsg", "info", "נטענה הטיוטה האחרונה מהמחשב הזה. אפשר להמשיך לערוך, או להעלות מבחן חדש.");
+} else {
+  setMsg("#stuMsg", "info", DEFAULT_ROWS_NOTE);
+}
+render();
+</script>
+</body>
+</html>
