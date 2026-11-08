@@ -95,6 +95,9 @@ details summary{cursor:pointer;color:var(--brand);font-weight:600}
 .export-row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
 footer{color:var(--muted);text-align:center;font-size:13px;padding:10px 16px 30px}
 .hidden{display:none!important}
+.drop{display:block}
+/* file inputs stay in the page (not display:none) so phones open the picker natively from the label */
+.vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0 0 0 0)}
 .builder{margin-top:16px;border:1px solid var(--line);border-radius:12px;padding:14px;background:#fafbfc}
 .builder h3{margin:0 0 6px;font-size:18px}
 .brow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0;border-bottom:1px dashed var(--line)}
@@ -121,11 +124,11 @@ footer{color:var(--muted);text-align:center;font-size:13px;padding:10px 16px 30p
   <p class="sub">קובץ Word ‏(‎.docx‎), PDF או טקסט – או הדבקה של טקסט המבחן. המערכת מזהה שאלות, סעיפים וניקוד.</p>
   <div class="grid2">
     <div>
-      <div class="drop" id="testDrop" tabindex="0" role="button" aria-label="העלאת קובץ מבחן">
-        <strong>📄 גררו לכאן את קובץ המבחן</strong>
-        <small>או לחצו לבחירה · docx / pdf / txt</small>
-      </div>
-      <input type="file" id="testFile" accept=".docx,.pdf,.txt,.md,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
+      <label class="drop" id="testDrop" for="testFile" tabindex="0" aria-label="העלאת קובץ מבחן">
+        <strong>📄 העלו את קובץ המבחן</strong>
+        <small>לחצו לבחירת קובץ (Word או PDF), או גררו אותו לכאן</small>
+      </label>
+      <input type="file" id="testFile" class="vh" accept=".docx,.pdf,.txt,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
       <div class="row" style="margin-top:12px">
         <button class="btn" id="sampleBtn" type="button">טעינת מבחן לדוגמה</button>
         <button class="btn primary" id="emptyBtn" type="button">🧱 בניית מבחן חדש (שלד Word)</button>
@@ -159,11 +162,11 @@ footer{color:var(--muted);text-align:center;font-size:13px;padding:10px 16px 30p
   <p class="sub"><b>העלו קובץ Excel</b> של רשימת התלמידים (במערכת בית הספר: פותחים את רשימת הקבוצה ובוחרים <b>ייצוא אקסל</b>). בלי קובץ – נוצרות 40 שורות ריקות.</p>
   <div class="grid2">
     <div>
-      <div class="drop" id="stuDrop" tabindex="0" role="button" aria-label="העלאת רשימת תלמידים">
+      <label class="drop" id="stuDrop" for="stuFile" tabindex="0" aria-label="העלאת רשימת תלמידים">
         <strong>👥 העלו קובץ Excel של רשימת התלמידים</strong>
         <small>לחצו לבחירת הקובץ, או גררו אותו לכאן</small>
-      </div>
-      <input type="file" id="stuFile" accept=".xlsx,.xls,.csv,.txt,.pdf,.docx,.ods,.numbers,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.oasis.opendocument.spreadsheet" hidden>
+      </label>
+      <input type="file" id="stuFile" accept=".xlsx,.xls,.csv,.txt,.pdf,.docx,.ods,.numbers,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.oasis.opendocument.spreadsheet" class="vh">
     </div>
     <div>
       <textarea id="stuText" style="min-height:96px" placeholder="או הדביקו שמות – שם אחד בכל שורה"></textarea>
@@ -218,6 +221,14 @@ footer{color:var(--muted);text-align:center;font-size:13px;padding:10px 16px 30p
 
 <script>
 "use strict";
+window.addEventListener("error", e => {
+  const box = document.getElementById("testMsg");
+  if (box) { box.className = "msg bad"; box.textContent = "⚠ תקלה בדף: " + (e.message || e) + " – צלמו את המסך ושלחו, ונסו לרענן את הדף."; }
+});
+window.addEventListener("unhandledrejection", e => {
+  const box = document.getElementById("testMsg");
+  if (box) { box.className = "msg bad"; box.textContent = "⚠ תקלה: " + ((e.reason && e.reason.message) || e.reason) + " – נסו שוב או רעננו את הדף."; }
+});
 /* ---------- libraries (loaded on demand) ---------- */
 const LIBS = {
   mammoth: "https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js",
@@ -1469,7 +1480,6 @@ function exportCsv(){
    ========================================================= */
 function wireDrop(dropSel, inputSel, handler){
   const d = $(dropSel), inp = $(inputSel);
-  d.addEventListener("click", () => inp.click());
   d.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " "){ e.preventDefault(); inp.click(); } });
   inp.addEventListener("change", () => { handler(inp.files[0]); inp.value = ""; });
   ["dragenter", "dragover"].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.add("over"); }));
