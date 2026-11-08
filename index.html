@@ -201,7 +201,8 @@ const LIBS = {
   pdfjs:   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
   pdfwork: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js",
   xlsx:    "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
-  exceljs: "https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"
+  exceljs: "https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js",
+  jszip:   "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
 };
 const loaded = {};
 function loadLib(key){
@@ -282,54 +283,94 @@ const SUB_RE2 = new RegExp("^סעיף\\s+([" + HEB_LETTERS + "])'?\\s*[:.\\-]?\\
 const NUM_Q_RE = /^(\d{1,2})\s*[.)]\s+(.+)$/;
 const STOP_RE = /(בהצלחה|למילוי על ידי המורה|למילוי ע"י המורה|טבלת ניקוד)/;
 
+const BARE_NUM_RE = /^(\d{1,2})\s*[.)]?$/;
+const STRONG_SUB_RE = /^\(?([א-ת])\s*[.)]\s*(.*)$/;      // "ב. ..." / "ב) ..." / "(ב) ..."
+const BARE_LETTER_RE = /^([א-ת])\s*['.]?$/;               // a lone "ב" (e.g. a table cell)
+const FINAL_TO_REG = { "ך":"כ", "ם":"מ", "ן":"נ", "ף":"פ", "ץ":"צ" };
+
 function parseTest(raw){
-  const lines = normalize(raw).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  let lines = normalize(raw).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  // "10" + "נק'" split over two lines/cells → "10 נק'"
+  const merged = [];
+  for (const l of lines){
+    if (/^(נק'?|נקודות|נק\.)$/.test(l) && merged.length && /^\d+(\.\d+)?$/.test(merged[merged.length - 1])) merged[merged.length - 1] += " נק'";
+    else merged.push(l);
+  }
+  lines = merged;
+  // how are questions numbered in this file?
+  const wordMode = lines.some(l => Q_RE.test(l) || Q_RE_HEB.test(l));
+  const bareMode = !wordMode && lines.some(l => /^1\s*[.)]?$/.test(l)) && lines.some(l => /^2\s*[.)]?$/.test(l));
+  const headerOf = (line, expected) => {
+    if (wordMode){
+      const m = line.match(Q_RE) || line.match(Q_RE_HEB);
+      if (!m) return null;
+      return { num: /^\d+$/.test(m[1]) ? parseInt(m[1]) : HEB_ORD[m[1]], rest: m[2] || "" };
+    }
+    // number-only headers must come in order (1, 2, 3…) so numbers inside exercises are not mistaken for questions
+    const m = bareMode ? line.match(BARE_NUM_RE) : line.match(NUM_Q_RE);
+    if (!m || +m[1] !== expected) return null;
+    return { num: +m[1], rest: bareMode ? "" : m[2] };
+  };
+
   const qs = [];
-  let q = null, sub = null, sawQuestion = false;
-  const pre = [];
-  for (let line of lines){
-    if (STOP_RE.test(line) && sawQuestion) break;
-    let m = line.match(Q_RE) || line.match(Q_RE_HEB);
-    if (m){
-      const num = /^\d+$/.test(m[1]) ? parseInt(m[1]) : HEB_ORD[m[1]];
-      q = { num:String(num), points:findPoints(line), text:[stripPoints(m[2]||"")], subs:[] };
-      qs.push(q); sub = null; sawQuestion = true; continue;
+  let q = null, sub = null;
+  const newSub = (letter, line, rest) => {
+    const last = q.subs[q.subs.length - 1];
+    const exp = last ? HEB_LETTERS.indexOf(last.letter) + 1 : 0;
+    let idx = FINAL_TO_REG[letter] ? -1 : HEB_LETTERS.indexOf(letter);
+    // a typo / final letter / repeated letter (Word list restarting) becomes the next letter in order
+    if (idx < exp || idx > exp + 2) idx = exp;
+    sub = { letter: HEB_LETTERS[idx] || letter, points: findPoints(line), text: [stripPoints(rest || "")] };
+    q.subs.push(sub);
+  };
+  for (const line of lines){
+    if (STOP_RE.test(line) && qs.length) break;
+    const h = headerOf(line, qs.length ? (+q.num + 1) : 1);
+    if (h){
+      q = { num: String(h.num), points: findPoints(line), text: [stripPoints(h.rest)], subs: [], pending: null };
+      qs.push(q); sub = null; continue;
     }
-    if (!q){ pre.push(line); continue; }
-    m = line.match(SUB_RE2) || line.match(SUB_RE);
-    // guard: a sub-letter must be the next expected letter-ish (avoids "ב" as a word start)
-    if (m && isPlausibleSub(q, m[1], line)){
-      sub = { letter:m[1], points:findPoints(line), text:[stripPoints(m[2]||"")] };
-      q.subs.push(sub); continue;
-    }
-    if (ONLY_PTS_RE.test(line)){
-      const p = findPoints(line);
-      if (sub && sub.points == null) sub.points = p;
-      else if (!sub && q.points == null) q.points = p;
-      else if (sub && sub.points != null && q.points == null && q.subs.length === 0) q.points = p;
+    if (!q) continue;
+    let m = line.match(SUB_RE2);
+    if (m){ newSub(m[1], line, m[2]); continue; }
+    m = line.match(STRONG_SUB_RE);
+    if (m && (m[2] || "").length !== 0 || (m = line.match(BARE_LETTER_RE))){
+      // several sub-items laid out side by side on one line: "א.   ב."
+      let rest = m[2] || "", mm;
+      newSub(m[1], line, rest);
+      while ((mm = rest.match(/^([א-ת])\s*\.\s*(.*)$/))){ rest = mm[2]; sub.text = [""]; newSub(mm[1], "", rest); }
       continue;
     }
+    m = line.match(SUB_RE);
+    if (m && isPlausibleSub(q, m[1], line)){ newSub(m[1], line, m[2]); continue; }
+
     const p = findPoints(line);
+    if (ONLY_PTS_RE.test(line)){
+      // after several sub-items that have no points of their own, a lone points line is the question's total
+      if (q.points == null && q.subs.length > 1 && q.subs.every(s => s.points == null)) q.points = p;
+      else if (sub && sub.points == null) sub.points = p;
+      else if (!sub && q.points == null) q.points = p;
+      else if (!sub && p < q.points) q.pending = p;      // points of an unlabeled first sub-item (e.g. a picture)
+      continue;
+    }
     if (p != null){
       if (sub && sub.points == null) sub.points = p;
       else if (!sub && q.points == null) q.points = p;
+      // a line carrying its own (smaller) points = an unlabeled sub-item
+      else if (sub || p < q.points){ newSub(HEB_LETTERS[q.subs.length], line, line); continue; }
+      else q.points = q.points ?? p;
     }
     (sub ? sub.text : q.text).push(stripPoints(line));
   }
-  // fallback: numbered list "1. ..." when no "שאלה N" headers were found
-  if (!qs.length){
-    let cur = null;
-    for (const line of lines){
-      if (STOP_RE.test(line) && qs.length) break;
-      const m = line.match(NUM_Q_RE);
-      if (m){ cur = { num:m[1], points:findPoints(line), text:[stripPoints(m[2])], subs:[] }; qs.push(cur); continue; }
-      if (!cur) continue;
-      const s = line.match(SUB_RE);
-      if (s && isPlausibleSub(cur, s[1], line)){ cur.subs.push({ letter:s[1], points:findPoints(line), text:[stripPoints(s[2]||"")] }); continue; }
-      const p = findPoints(line);
-      const last = cur.subs[cur.subs.length-1];
-      if (p != null){ if (last && last.points == null) last.points = p; else if (!last && cur.points == null) cur.points = p; }
-      (last ? last.text : cur.text).push(stripPoints(line));
+  for (const qq of qs){
+    // multiple-choice options (short, no points) are not sub-items
+    if (qq.subs.length >= 2 && qq.subs.every(s => { const t = s.text.join(" ").trim(); return s.points == null && t.length > 0 && t.length < 20; })){
+      qq.text.push(...qq.subs.map(s => s.letter + ". " + s.text.join(" "))); qq.subs = [];
+    }
+    // sub-items start at ב → the first one was unlabeled (usually a picture)
+    if (qq.subs.length && qq.subs[0].letter !== "א"){
+      const p = qq.pending ?? (qq.points != null && qq.subs.every(s => s.points != null) ? Math.max(0, qq.points - qq.subs.reduce((a, s) => a + s.points, 0)) || null : null);
+      qq.subs.unshift({ letter: "א", points: p, text: [""] });
     }
   }
   return toItems(qs);
@@ -351,8 +392,10 @@ function toItems(qs){
       const missing = q.subs.filter(s => s.points == null);
       let share = null;
       if (missing.length && q.points != null){
-        share = Math.max(0, q.points - known) / missing.length;
-        share = Math.round(share * 2) / 2;
+        // split into half-points, remainder to the last one, so the sub-items always add up to the question
+        const rem = Math.max(0, q.points - known);
+        share = Math.floor(rem / missing.length * 2) / 2;
+        missing[missing.length - 1].points = rem - share * (missing.length - 1);
         warnings.push(`בשאלה ${q.num} חילקתי את הניקוד בין הסעיפים שלא צוין להם ניקוד – כדאי לבדוק.`);
       } else if (missing.length){
         warnings.push(`בשאלה ${q.num} לא נמצא ניקוד לסעיפים ${missing.map(s => s.letter).join(", ")}.`);
@@ -383,7 +426,7 @@ const LEVEL_RULES = [
   // 3 = open: several possible answers / student invents or investigates
   { lvl:3, re:/(תנו דוגמה|תן דוגמה|הציעו|הצע |חקרו|חקור|שערו|הכלילו|מצאו את כל|כמה דרכים|בכמה דרכים|דרך נוספת|ייתכנו|המציאו|חברו שאלה|נסחו|בנו דוגמה)/ },
   // 2 = process thinking: explain, justify, prove, judge a claim
-  { lvl:2, re:/(הסביר|הסבר|נמק|הוכיח|הוכח|מדוע|למה |האם |הראו ש|הראה ש|בדקו אם|בדוק אם|השוו|ייתכן|טוען|צדק|שגיאה|טעות|בעיה|בעית)/ },
+  { lvl:2, re:/(הסביר|הסבר|נמק|הוכיח|הוכח|מדוע|למה |האם |הראו ש|הראה ש|בדקו אם|בדוק אם|השוו(?![א-ת])|ייתכן|טוען|צדק|שגיאה|טעות|בעיה|בעית)/ },
   { lvl:0, re:/(סמנו|סמן |הקיפו|הקף |השלימו|השלם |כתבו את השם|מה השם|מה שם|הגדירו|הגדר |זהו |זהה |התאימו|התאם |העתיקו|נכון או לא|נכון\/לא|רשמו את|קראו|מהו ה|מהי ה|איזה מ|איזו מ|מי מ)/ },
   { lvl:1, re:/(חשב|פתר|מצא|שרטט|סדר|בנו|הציב|כנס|פשט|הרחיב|צייר|מדד|השוו בין|קבע)/ }
 ];
@@ -397,9 +440,14 @@ function guessLevel(text){
 async function fileToText(file){
   const name = file.name.toLowerCase();
   if (name.endsWith(".docx")){
-    await loadLib("mammoth");
-    const r = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() });
-    return htmlToLines(r.value);
+    const buf = await file.arrayBuffer();
+    try { return await docxToText(buf); }
+    catch(e){
+      console.warn("docx reader failed, falling back to mammoth", e);
+      await loadLib("mammoth");
+      const r = await mammoth.convertToHtml({ arrayBuffer: buf });
+      return htmlToLines(r.value);
+    }
   }
   if (name.endsWith(".doc")) throw new Error("קבצי ‎.doc‎ ישנים לא נתמכים – שמרו את הקובץ ב-Word בתור ‎.docx‎ ונסו שוב.");
   if (name.endsWith(".pdf")){
@@ -426,6 +474,120 @@ async function fileToText(file){
     return out.join("\n");
   }
   return decodeText(await file.arrayBuffer());
+}
+/* Reads a .docx directly, so Word's automatic numbering (א. ב. ג. / 1. 2. 3.) is kept as text,
+   and text boxes (e.g. a question number inside a circle) come out in reading order. */
+const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+async function docxToText(buf){
+  await loadLib("jszip");
+  const zip = await JSZip.loadAsync(buf);
+  const xml = async p => { const f = zip.file(p); return f ? new DOMParser().parseFromString(await f.async("string"), "application/xml") : null; };
+  const doc = await xml("word/document.xml");
+  if (!doc) throw new Error("no document.xml");
+  const numDoc = await xml("word/numbering.xml"), stDoc = await xml("word/styles.xml");
+  const kids = (el, n) => el ? [...el.children].filter(c => c.localName === n) : [];
+  const kid = (el, n) => kids(el, n)[0] || null;
+  const val = el => el ? (el.getAttributeNS(W_NS, "val") ?? el.getAttribute("w:val")) : null;
+  const attr = (el, n) => el.getAttributeNS(W_NS, n) ?? el.getAttribute("w:" + n);
+
+  // numbering definitions
+  const abstract = {}, nums = {};
+  if (numDoc){
+    for (const an of numDoc.getElementsByTagNameNS(W_NS, "abstractNum")){
+      const lv = {};
+      for (const l of kids(an, "lvl")) lv[+attr(l, "ilvl")] = {
+        start: kid(l, "start") ? +val(kid(l, "start")) : 1,
+        fmt: val(kid(l, "numFmt")) || "decimal",
+        text: kid(l, "lvlText") ? (val(kid(l, "lvlText")) ?? "") : "%" + (+attr(l, "ilvl") + 1) + "."
+      };
+      abstract[attr(an, "abstractNumId")] = lv;
+    }
+    for (const n of numDoc.getElementsByTagNameNS(W_NS, "num")){
+      const over = {};
+      for (const o of kids(n, "lvlOverride")){ const so = kid(o, "startOverride"); if (so) over[+attr(o, "ilvl")] = +val(so); }
+      nums[attr(n, "numId")] = { abs: val(kid(n, "abstractNumId")), over };
+    }
+  }
+  // numbering that comes from a paragraph style
+  const styles = {};
+  if (stDoc) for (const s of stDoc.getElementsByTagNameNS(W_NS, "style")){
+    const np = kid(kid(s, "pPr"), "numPr");
+    styles[attr(s, "styleId")] = { based: val(kid(s, "basedOn")), num: np ? { id: val(kid(np, "numId")), ilvl: +(val(kid(np, "ilvl")) || 0) } : null };
+  }
+  const styleNum = (id, d = 0) => { const s = styles[id]; return !s || d > 10 ? null : s.num || (s.based ? styleNum(s.based, d + 1) : null); };
+
+  const counters = {}, started = new Set();
+  const label = (numId, ilvl) => {
+    const n = nums[numId]; if (!n) return "";
+    const lv = abstract[n.abs]; if (!lv) return "";
+    const c = counters[n.abs] || (counters[n.abs] = []);
+    if (!started.has(numId)){ started.add(numId); for (const l in n.over){ c[l] = n.over[l] - 1; for (let k = +l + 1; k < 9; k++) c[k] = null; } }
+    const L = lv[ilvl] || { start:1, fmt:"decimal", text:"%" + (ilvl + 1) + "." };
+    c[ilvl] = (c[ilvl] == null ? L.start - 1 : c[ilvl]) + 1;
+    for (let k = ilvl + 1; k < 9; k++) c[k] = null;
+    if (L.fmt === "bullet" || L.fmt === "none") return "";
+    return L.text.replace(/%(\d)/g, (_, d) => { const i = +d - 1, li = lv[i] || L; return fmtListNum(c[i] == null ? li.start : c[i], li.fmt); });
+  };
+
+  const out = [];
+  const walk = el => {
+    for (const n of el.children){
+      if (n.localName === "Fallback") continue;          // duplicate of a text box (old format)
+      if (n.localName === "p") para(n); else walk(n);
+    }
+  };
+  const para = p => {
+    let text = "";
+    const boxes = [];
+    const collect = el => {
+      for (const n of el.children){
+        const ln = n.localName;
+        if (ln === "Fallback" || ln === "pPr" || ln === "rPr" || ln === "instrText" || ln === "delText") continue;
+        if (ln === "txbxContent"){ boxes.push(n); continue; }
+        if (ln === "t") text += n.textContent;
+        else if (ln === "tab") text += " ";
+        else if (ln === "br" || ln === "cr") text += "\n";
+        else collect(n);
+      }
+    };
+    collect(p);
+    boxes.forEach(walk);                                 // text-box content (e.g. question number) first
+    const pPr = kid(p, "pPr");
+    let num = null;
+    const np = kid(pPr, "numPr");
+    if (np) num = { id: val(kid(np, "numId")), ilvl: +(val(kid(np, "ilvl")) || 0) };
+    else if (kid(pPr, "pStyle")) num = styleNum(val(kid(pPr, "pStyle")));
+    const lab = num && num.id && num.id !== "0" ? label(num.id, num.ilvl) : "";
+    if (text.trim()) out.push((lab ? lab + " " : "") + text);
+  };
+  walk(doc.documentElement);
+  return out.join("\n");
+}
+function fmtListNum(v, fmt){
+  const HEB = "אבגדהוזחטיכלמנסעפצקרשת";
+  switch (fmt){
+    case "hebrew1": return gematria(v);
+    case "hebrew2": return HEB[(v - 1) % 22] || String(v);
+    case "lowerLetter": return String.fromCharCode(97 + (v - 1) % 26);
+    case "upperLetter": return String.fromCharCode(65 + (v - 1) % 26);
+    case "lowerRoman": return roman(v).toLowerCase();
+    case "upperRoman": return roman(v);
+    default: return String(v);
+  }
+}
+function gematria(n){
+  if (n <= 0) return String(n);
+  const H = ["", "ק", "ר", "ש", "ת"], T = ["", "י", "כ", "ל", "מ", "נ", "ס", "ע", "פ", "צ"], U = ["", "א", "ב", "ג", "ד", "ה", "ו", "ז", "ח", "ט"];
+  let s = "";
+  while (n >= 400){ s += "ת"; n -= 400; }
+  if (n >= 100){ s += H[Math.floor(n / 100)]; n %= 100; }
+  if (n === 15) return s + "טו";
+  if (n === 16) return s + "טז";
+  return s + T[Math.floor(n / 10)] + U[n % 10];
+}
+function roman(n){
+  const r = [[1000,"M"],[900,"CM"],[500,"D"],[400,"CD"],[100,"C"],[90,"XC"],[50,"L"],[40,"XL"],[10,"X"],[9,"IX"],[5,"V"],[4,"IV"],[1,"I"]];
+  let s = ""; for (const [v, c] of r) while (n >= v){ s += c; n -= v; } return s;
 }
 // keep table cells as separate lines so "N נק'" in its own cell attaches to the right item
 function htmlToLines(html){
